@@ -249,15 +249,40 @@ describe("inlineDocument: <object> and <embed>", () => {
     expect(warnings).toEqual([]);
   });
 
+  it("gives the <img> its style and background inlined, whichever fetch ends first", async () => {
+    const slowBg: Files = { "http://site.test/bg.png": PNG, "http://site.test/a.png": PNG };
+    const doc = parseDocument(`<object id="o" data="/a.png" type="image/png" style="background: url(/bg.png) no-repeat" background="/bg.png"></object>`);
+    const { ctx } = ctxFor(slowBg);
+    const get = ctx.get.bind(ctx);
+    // the background arrives after the object's own image
+    ctx.get = async (url) => (url.endsWith("/bg.png") ? new Promise((r) => setTimeout(() => r(get(url)), 20)) : get(url));
+    await inlineDocument(doc, ctx);
+    const o = byId(doc, "o");
+    expect(o.tagName).toBe("img");
+    expect(getAttr(o, "style")).toBe(`background: url("${PNG_URI}") no-repeat`);
+    expect(getAttr(o, "background")).toBe(PNG_URI);
+  });
+
+  it("sets aside an untyped <object> or <embed> whose file is plainly not an image, without fetching it", async () => {
+    const { doc, warnings, requested } = await run(`<embed id="e" src="/files/big.pdf"><object id="o" data="/movie.swf?v=2"></object>`, {});
+    expect(requested).toEqual([]);
+    expect(getAttr(byId(doc, "e"), `${UNFETCHED_ATTRIBUTE_PREFIX}src`)).toBe("http://site.test/files/big.pdf");
+    expect(getAttr(byId(doc, "o"), `${UNFETCHED_ATTRIBUTE_PREFIX}data`)).toBe("http://site.test/movie.swf?v=2");
+    expect(warnings).toEqual([
+      "embed http://site.test/files/big.pdf: a .pdf file is not an image; set aside",
+      "object http://site.test/movie.swf?v=2: a .swf file is not an image; set aside",
+    ]);
+  });
+
   it("sets aside what is not an image, with a warning, and never puts a data: document into the element", async () => {
     const { doc, out, warnings, requested } = await run(
-      `<object id="doc" data="/pages/inner.html"><p>fallback</p></object>` +
+      `<object id="doc" data="/pages/inner"><p>fallback</p></object>` +
         `<embed id="pdf" src="/files/report.pdf" type="application/pdf">` +
         `<object id="gone" data="/img/gone.png" type="image/png">fallback</object>`,
-      { "http://site.test/pages/inner.html": { mime: "text/html; charset=utf-8", body: "<p>inner</p>" } },
+      { "http://site.test/pages/inner": { mime: "text/html; charset=utf-8", body: "<p>inner</p>" } },
     );
     expect(getAttr(byId(doc, "doc"), "data")).toBeNull();
-    expect(getAttr(byId(doc, "doc"), `${UNFETCHED_ATTRIBUTE_PREFIX}data`)).toBe("http://site.test/pages/inner.html");
+    expect(getAttr(byId(doc, "doc"), `${UNFETCHED_ATTRIBUTE_PREFIX}data`)).toBe("http://site.test/pages/inner");
     expect(getAttr(byId(doc, "pdf"), "src")).toBeNull();
     expect(getAttr(byId(doc, "pdf"), `${UNFETCHED_ATTRIBUTE_PREFIX}src`)).toBe("http://site.test/files/report.pdf");
     expect(getAttr(byId(doc, "pdf"), "type"), "a type alone still starts a plugin").toBeNull();
@@ -270,7 +295,7 @@ describe("inlineDocument: <object> and <embed>", () => {
     expect(requested, "a declared non-image is not fetched").not.toContain("http://site.test/files/report.pdf");
     expect(warnings).toEqual([
       "embed http://site.test/files/report.pdf: application/pdf is not an image; set aside",
-      "object http://site.test/pages/inner.html: text/html is not an image; set aside",
+      "object http://site.test/pages/inner: text/html is not an image; set aside",
     ]);
   });
 });
@@ -310,6 +335,16 @@ describe("inlineDocument: SVG <use> of an external sprite", () => {
     expect("tagName" in last && last.tagName).toBe("svg");
     expect(getAttr(last as never, SPRITES_ATTRIBUTE)).toBe("");
     expect(warnings).toEqual([]);
+  });
+
+  it("takes a sprite served as XML, as Chromium does, and reads a plain href over xlink:href", async () => {
+    const { doc, out, warnings } = await run(
+      `<svg><use id="u" xlink:href="#a" href="http://cdn.test/x/sprite.xml#dot"></use></svg>`,
+      { "http://cdn.test/x/sprite.xml": { mime: "application/xml", body: SPRITE } },
+    );
+    expect(warnings).toEqual([]);
+    expect(out).not.toContain("cdn.test");
+    for (const a of byId(doc, "u").attrs.filter((x) => x.name === "href")) expect(a.value).toBe(`#${SPRITE_ID_PREFIX}0-dot`);
   });
 
   it("copies into the shadow root the <use> is in, where its ids are scoped", async () => {

@@ -188,6 +188,9 @@ const LINK_ATTRIBUTES: Record<string, string[]> = {
  */
 const EMBEDDED_ONLY_ATTRIBUTES = ["data", "src", "type", "typemustmatch", "codebase", "codetype", "classid", "archive", "declare", "standby", "form", "pluginspage", "pluginurl"];
 
+/** File extensions an untyped <object>/<embed> is set aside by without being fetched: never an image. */
+const NOT_IMAGE_EXTENSIONS = ["pdf", "swf", "html", "htm", "xhtml", "mp4", "webm", "mov", "mp3", "ogg", "wav"];
+
 /**
  * An <object data> or <embed src>. An image becomes an <img> of it in the element's place (the
  * <img> keeps the element's other attributes); anything else (a document, a PDF, a plugin) is set
@@ -207,8 +210,11 @@ async function inlineEmbedded(el: Element, ctx: HtmlContext): Promise<void> {
     if (type !== null) setUnfetchedAside(el, "type", type);
   };
   const declared = normalizeMime(type);
-  // not fetched: a PDF or a plugin's file can be large, and it would be thrown away
+  // not fetched: a PDF or a plugin's file can be large, and its bytes would count against the
+  // page's total size cap only to be thrown away
   if (declared && !declared.startsWith("image/")) return setAside(`${declared} is not an image`);
+  const ext = /\.([a-z0-9]+)$/i.exec(new URL(url).pathname)?.[1]?.toLowerCase();
+  if (!declared && ext && NOT_IMAGE_EXTENSIONS.includes(ext)) return setAside(`a .${ext} file is not an image`);
   const res = await ctx.get(url);
   if (!res) return setAside(null); // the resolver has warned
   const mime = effectiveMime(res.mime, res.bytes);
@@ -242,6 +248,9 @@ interface SpriteState {
   scopes: Map<ParentNode, { defs: Element; copied: Set<string> }>;
 }
 
+/** The types Chromium takes an external <use>'s document in (DocumentResource::MimeTypeAllowed). */
+const SPRITE_MIMES = ["image/svg+xml", "text/xml", "application/xml", "application/xhtml+xml"];
+
 function loadSprite(url: string, ctx: HtmlContext, state: SpriteState): Promise<Sprite | null> {
   let sheet = state.sheets.get(url);
   if (!sheet) {
@@ -249,7 +258,7 @@ function loadSprite(url: string, ctx: HtmlContext, state: SpriteState): Promise<
     sheet = ctx.get(url).then((res) => {
       if (!res) return null;
       const mime = effectiveMime(res.mime, res.bytes);
-      if (mime !== "image/svg+xml") return { n, byId: null, mime };
+      if (!SPRITE_MIMES.includes(mime)) return { n, byId: null, mime };
       const tree = parseFragment(utf8(res.bytes).replace(/^\uFEFF/, ""));
       // the sprite is copied into the archive, so what it holds is held to the archive's rules
       sanitizeDocument(tree);
@@ -354,7 +363,8 @@ function copyFromSprite(sprite: Sprite & { byId: Map<string, Element> }, id: str
  * be had is set aside, with a warning.
  */
 async function inlineUse(el: Element, ctx: HtmlContext, state: SpriteState): Promise<void> {
-  const raw = getAttr(el, "href"); // xlink:href too: parse5 names it href, in the xlink namespace
+  // xlink:href too: parse5 names it href, in the xlink namespace; a plain href wins over it, as in a browser
+  const raw = (el.attrs.find((a) => a.name === "href" && !a.namespace) ?? el.attrs.find((a) => a.name === "href"))?.value ?? null;
   if (raw === null || raw.trim().startsWith("#")) return;
   const url = fetchable(raw, ctx.baseUrl);
   if (!url) return;
@@ -389,6 +399,7 @@ export async function inlineDocument(doc: Document, ctx: HtmlContext): Promise<v
 async function inlineElements(elements: readonly Element[], ctx: HtmlContext, sprites: SpriteState): Promise<void> {
   const jobs: Promise<void>[] = [];
   for (const el of elements) {
+    const own = jobs.length;
     const tag = el.tagName;
     // first: it may add to the style attribute, whose url()s are inlined next
     if (tag === "video" || tag === "audio") freezeMedia(el, ctx);
@@ -432,9 +443,12 @@ async function inlineElements(elements: readonly Element[], ctx: HtmlContext, sp
         jobs.push(inlineAttr(el, "href", ctx));
         break;
       case "object":
-      case "embed":
-        jobs.push(inlineEmbedded(el, ctx));
+      case "embed": {
+        // after its style and background are inlined: the <img> it may become copies them
+        const before = jobs.slice(own);
+        jobs.push(Promise.all(before).then(() => inlineEmbedded(el, ctx)));
         break;
+      }
       case "use": // SVG <use href> / <use xlink:href>
         jobs.push(inlineUse(el, ctx, sprites));
         break;

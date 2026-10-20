@@ -128,14 +128,16 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   by its declared `type` or the response's) becomes an `<img>` of it as a `data:` URI in the
   element's place, keeping its other attributes, so it takes the page's `img` rules. Anything else
   (a document, a PDF, a plugin) is set aside with a warning, its `type` with it: left with a type
-  alone, Chromium still starts the plugin. A declared non-image is not fetched. A `data:` URL is
+  alone, Chromium still starts the plugin. A declared non-image, or an untyped one whose file
+  extension is never an image's (`.pdf`, `.swf`, `.html`…), is not fetched. A `data:` URL is
   never put back into the element: there it is a document, which the sanitizer removes.
 - **SVG `<use>` of another file** (`inlineUse`), an icon sprite: the element it names, and every
   element that one refers to by `#id` (a gradient, a clip path, another symbol), is copied once
   into a hidden `<svg SPRITES_ATTRIBUTE>` at the end of the `<body>` (or of the shadow root the
   `<use>` is in, where ids are scoped), each id renamed `SPRITE_ID_PREFIX<n>-<id>`, and the
   `<use>` (`href` or `xlink:href`) points at the copy. The sprite is sanitized before anything is
-  copied, and what the copies refer to is inlined against the sprite's own URL. A sprite that
+  copied, and what the copies refer to is inlined against the sprite's own URL. A sprite is taken
+  in the types Chromium takes it in (SVG or XML), and a plain `href` wins over `xlink:href`. A sprite that
   cannot be had, is not SVG, or has no such element is set aside with a warning.
 - Icons: a `<link>` whose `rel` is one of `ICON_RELS` (`icon`, `apple-touch-icon`,
   `apple-touch-icon-precomposed`) is inlined, or removed when it cannot be had.
