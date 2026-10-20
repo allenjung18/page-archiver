@@ -3,11 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Chrome MV3 extension: capture the tab you are reading.",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
+  "description": "Chrome MV3 extension: capture the tab you are reading. `npm run build` writes the unpacked extension to dist/unpacked.",
+  "dependencies": {
+    "@page-archiver/core": "0.0.0",
+    "@page-archiver/serializer": "0.0.0"
+  },
+  "scripts": {
+    "build": "node build.mjs"
   }
 }

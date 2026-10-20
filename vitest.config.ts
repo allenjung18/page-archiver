@@ -7,6 +7,8 @@ export default defineConfig({
   // the workspace packages from their sources, so unit tests need no build first
   resolve: {
     alias: {
+      // the subpath first: an alias also matches its key followed by a path
+      "@page-archiver/core/portable": fileURLToPath(new URL("./packages/core/src/portable.ts", import.meta.url)),
       "@page-archiver/core": src("core"),
       "@page-archiver/library": src("library"),
     },
