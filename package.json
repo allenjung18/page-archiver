@@ -17,14 +17,14 @@
     "packages/extension"
   ],
   "scripts": {
-    "build": "tsc -b tsconfig.build.json && npm run build -w @page-archiver/serializer && tsc -p tsconfig.json",
+    "build": "tsc -b tsconfig.build.json && npm run build -w @page-archiver/serializer && npm run build:ui -w @page-archiver/server && tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",
     "oracle": "npm run build && playwright test -c playwright.oracle.config.ts",
     "fixtures": "node fixtures/server.ts",
     "fixtures:images": "node fixtures/make-images.ts",
-    "clean": "tsc -b tsconfig.build.json --clean && rm -rf packages/serializer/dist test-results playwright-report"
+    "clean": "tsc -b tsconfig.build.json --clean && rm -rf packages/serializer/dist packages/server/dist/ui test-results playwright-report"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
@@ -33,6 +33,9 @@
     "@types/jsdom": "30.0.0",
     "@types/node": "24.19.2",
     "@types/pngjs": "6.0.5",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.2",
     "ajv": "8.20.0",
     "esbuild": "0.28.2",
     "eslint": "9.39.5",
@@ -40,8 +43,11 @@
     "happy-dom": "20.14.5",
     "pixelmatch": "7.1.0",
     "pngjs": "7.0.0",
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
     "typescript": "5.9.3",
     "typescript-eslint": "8.65.0",
+    "vite": "8.3.4",
     "vitest": "4.1.12"
   }
 }

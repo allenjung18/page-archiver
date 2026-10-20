@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@page-archiver/core": "0.0.0",
-    "@page-archiver/library": "0.0.0"
+    "@page-archiver/library": "0.0.0",
+    "@page-archiver/server": "0.0.0"
   }
 }

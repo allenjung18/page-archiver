@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// pa: save | list | search | open | tag | reindex | import (serve lands with the reader UI).
+// pa: save | list | search | open | tag | reindex | import | serve.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { basename, relative } from "node:path";
 import { capture, READER_FILE, serializeMeta, type Archive } from "@page-archiver/core";
 import { openLibrary, QueryError, resolveLibraryDir, type Library, type PageRecord, type SearchHit } from "@page-archiver/library";
-import { parseLibraryArgs, parseSaveArgs, UsageError, type LibraryArgs, type SaveArgs } from "./args.ts";
+import { startServer } from "@page-archiver/server";
+import { parseLibraryArgs, parseSaveArgs, parseServeArgs, UsageError, type LibraryArgs, type SaveArgs, type ServeArgs } from "./args.ts";
 
 const USAGE = `usage: pa <command> [args]
 
@@ -26,9 +27,11 @@ commands:
                          --print: print the path instead)
   reindex                rebuild library.db from the library's folders
   import <file.html>...  bring in pages saved by SingleFile [--url <url>] [--tag <tag>]...
+  serve                  the reader UI and the local API on http://127.0.0.1:47320/, opened in the
+                         browser; prints the write token [--port <n>] [--no-open]
 
 The library is --library <dir>, else $PA_LIBRARY, else ~/Archive/pages.
-not implemented yet: serve`;
+PA_NO_OPEN=1 stops serve from opening a browser.`;
 
 const LIBRARY_COMMANDS = new Set(["list", "search", "tag", "open", "reindex", "import"]);
 
@@ -163,6 +166,20 @@ async function libraryCommand(args: LibraryArgs): Promise<number> {
   }
 }
 
+async function serve(args: ServeArgs): Promise<number> {
+  const root = resolveLibraryDir(args.library);
+  const server = await startServer({ library: root, port: args.port });
+  const count = server.library.list().length;
+  console.log(`page-archiver: serving ${root} (${count} ${count === 1 ? "page" : "pages"}) at ${server.url}`);
+  console.log(`write token: ${server.token}`);
+  if (args.open && !process.env["PA_NO_OPEN"]) openInBrowser(server.url);
+  await new Promise<void>((resolve) => {
+    for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => resolve());
+  });
+  await server.close();
+  return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   if (command === undefined || command === "help" || command === "--help" || command === "-h") {
@@ -171,6 +188,7 @@ async function main(argv: string[]): Promise<number> {
   }
   try {
     if (command === "save") return await save(rest);
+    if (command === "serve") return await serve(parseServeArgs(rest));
     if (LIBRARY_COMMANDS.has(command)) return await libraryCommand(parseLibraryArgs(command as LibraryArgs["command"], rest));
   } catch (err) {
     if (err instanceof UsageError || err instanceof QueryError) {
@@ -180,7 +198,7 @@ async function main(argv: string[]): Promise<number> {
     console.error(`pa: ${(err as Error).message}`);
     return 1;
   }
-  console.error(`pa: '${command}' is not implemented yet`);
+  console.error(`pa: unknown command '${command}' (pa help lists them)`);
   return 2;
 }
 

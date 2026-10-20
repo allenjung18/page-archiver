@@ -12,6 +12,11 @@
   },
   "dependencies": {
     "@page-archiver/core": "0.0.0",
-    "@page-archiver/library": "0.0.0"
+    "@page-archiver/library": "0.0.0",
+    "@hono/node-server": "2.1.4",
+    "hono": "4.13.13"
+  },
+  "scripts": {
+    "build:ui": "tsc -p ui/tsconfig.json && vite build --config ui/vite.config.ts"
   }
 }

@@ -16,7 +16,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["packages/serializer/src/**", "packages/extension/src/**", "fixtures/pages/**"],
+    files: ["packages/serializer/src/**", "packages/extension/src/**", "packages/server/ui/src/**", "fixtures/pages/**"],
     languageOptions: { globals: { ...globals.browser } },
   },
 );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseLibraryArgs, parseSaveArgs, UsageError } from "./args.ts";
+import { parseLibraryArgs, parseSaveArgs, parseServeArgs, UsageError } from "./args.ts";
 
 const NOTHING_SKIPPED = { skip: { reader: false, mhtml: false, png: false, pdf: false } };
 
@@ -108,6 +108,20 @@ describe("parseLibraryArgs", () => {
       ["import", ["a.html", "--url", ""]],
     ] as const) {
       expect(() => parseLibraryArgs(command, [...argv]), `${command} ${argv.join(" ")}`).toThrow(/needs a value, not an empty string/);
+    }
+  });
+});
+
+describe("parseServeArgs", () => {
+  it("reads the port, the library and --no-open", () => {
+    expect(parseServeArgs([])).toEqual({ open: true });
+    expect(parseServeArgs(["--port", "0", "--no-open", "--library", "lib"])).toEqual({ port: 0, open: false, library: "lib" });
+    expect(parseServeArgs(["--port", "47320"]).port).toBe(47320);
+  });
+
+  it("refuses what it cannot run", () => {
+    for (const argv of [["--port", "70000"], ["--port", "-1"], ["--port", "x"], ["--port", ""], ["--library", ""], ["extra"], ["--open-it"]]) {
+      expect(() => parseServeArgs(argv), argv.join(" ")).toThrow(UsageError);
     }
   });
 });

@@ -12,8 +12,8 @@ Status: the capture core works from the terminal (`pa save <url> -o <file>`), in
 CSS-in-JS and adopted stylesheets, shadow DOM, canvas, form state, iframes and cookie walls,
 and `pa save <url> -d <dir>` adds a reader copy, an MHTML copy, a full-page PNG and PDF, and
 `meta.json`. `pa save <url>` saves into the library (a folder with a full-text index), which
-`pa list`, `pa search`, `pa tag`, `pa open`, `pa reindex` and `pa import` work on. The local
-UI and the extension are not built yet.
+`pa list`, `pa search`, `pa tag`, `pa open`, `pa reindex` and `pa import` work on, and
+`pa serve` opens in the browser to read it. The extension is not built yet.
 
 ## Saving a page
 
@@ -121,6 +121,38 @@ pa import <file.html>... [--url <url>] [--tag <tag>]...
   comment (`--url` when the file has none), scripts and handlers removed, the file stamped,
   and a reader copy made. Importing the same file twice is refused.
 
+## Reading the library in the browser
+
+```
+pa serve [--port <n>] [--no-open]
+```
+
+starts a small server on `http://127.0.0.1:47320/` (only on this machine's loopback address,
+never on the network) and opens it in the default browser (`--no-open`, or `PA_NO_OPEN=1`,
+does not). It prints a write token at start. The page lists the library newest first; type to
+search (hits highlighted in a snippet), narrow by site, tag and capture date, or show every
+version. Choosing a page shows it with an **Original / Reader** toggle, its tags (add and
+remove), **Re-capture** (saves the URL again as the page's next version) and **Delete**
+(removes that capture's folder, after a confirmation). Ctrl-C stops the server.
+
+Archived pages are untrusted HTML, so they are never put into the app's own page: each is
+served by its own route, `/archive/<id>/original` or `/archive/<id>/reader`, under
+
+```
+Content-Security-Policy: default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; frame-src data: about:
+```
+
+and shown in an `<iframe sandbox="">` (no scripts, no forms, no popups, no same-origin
+access). Either one alone keeps a script that slipped into an archive from running; the
+tests check both.
+
+The API (JSON) under `/api`: `GET pages`, `GET search?q=`, `GET facets`, `GET pages/<id>`
+take the list filters as query parameters (`site`, `tag`, `since`, `until`, `all=1`,
+`limit`). The writes, `POST save` (`{"url", "tags"}`), `POST pages/<id>/recapture`,
+`POST pages/<id>/tags` (`{"add", "remove"}`) and `DELETE pages/<id>`, need
+`Authorization: Bearer <token>`; the reader UI is handed the token in its page. Requests
+that name any host other than `127.0.0.1:<port>` or `localhost:<port>` are refused.
+
 ## Layout
 
 ```
@@ -144,7 +176,7 @@ npm ci
 npx playwright install chromium   # once
 npm run lint
 npm test                          # unit tests (vitest)
-npm run build                     # tsc for every package, the serializer IIFE, then a type check of tests and fixtures
+npm run build                     # tsc for every package, the serializer IIFE, the reader UI (Vite), then a type check of tests and fixtures
 npm run test:e2e                  # build, then Playwright (starts the fixture server itself)
 npm run fixtures                  # fixture server by hand: pages on :47310, assets on :47311
 ```

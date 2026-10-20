@@ -234,3 +234,34 @@ export function parseLibraryArgs(command: LibraryArgs["command"], argv: string[]
     }
   }
 }
+
+export interface ServeArgs {
+  library?: string;
+  /** 0: any free port. Unset: the server's default. */
+  port?: number;
+  /** Open the UI in the default browser once the server listens (--no-open: do not). */
+  open: boolean;
+}
+
+export const SERVE_USAGE = "usage: pa serve [--port <n>] [--no-open] [--library <dir>]";
+
+/** The arguments of serve. */
+export function parseServeArgs(argv: string[]): ServeArgs {
+  let parsed;
+  try {
+    parsed = parseArgs({ args: argv, allowPositionals: true, options: { library: { type: "string" }, port: { type: "string" }, "no-open": { type: "boolean" } } });
+  } catch (err) {
+    throw new UsageError(`${(err as Error).message}\n${SERVE_USAGE}`);
+  }
+  const { values, positionals } = parsed;
+  if (positionals.length) throw new UsageError(`serve takes no arguments: ${positionals.join(" ")}\n${SERVE_USAGE}`);
+  const empty = (["library", "port"] as const).find((k) => values[k] === "");
+  if (empty) throw new UsageError(`--${empty} needs a value, not an empty string\n${SERVE_USAGE}`);
+  const out: ServeArgs = { open: !values["no-open"] };
+  if (values.library) out.library = values.library;
+  if (values.port !== undefined) {
+    if (!/^\d{1,5}$/.test(values.port) || Number(values.port) > 65535) throw new UsageError(`--port takes a port number (0 for any free one): ${values.port}\n${SERVE_USAGE}`);
+    out.port = Number(values.port);
+  }
+  return out;
+}
