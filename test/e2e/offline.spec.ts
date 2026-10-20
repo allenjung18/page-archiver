@@ -110,21 +110,26 @@ const FIXTURES: Record<string, Fixture> = {
     },
   },
   media: {
-    // both videos and the audio are set aside, in document order; the videos keep a poster frame
+    // the three videos (one in a shadow root) and the audio are set aside, in document order;
+    // the videos keep a poster frame
     warnings: [
+      /^video http:\/\/127\.0\.0\.1:\d+\/media\/still\.webm: media not archived; the poster frame is kept$/,
       /^video http:\/\/127\.0\.0\.1:\d+\/media\/still\.webm: media not archived; the poster frame is kept$/,
       /^video http:\/\/127\.0\.0\.1:\d+\/media\/still\.webm: media not archived; the poster frame is kept$/,
       /^audio http:\/\/127\.0\.0\.1:\d+\/media\/silence\.ogg: media not archived; nothing of it is kept$/,
     ],
-    summary: ["3 video or audio files not archived"],
+    summary: ["4 video or audio files not archived"],
     check(html) {
       expect(html).not.toMatch(/<(video|audio|source|track)\b[^>]*\ssrc=/);
-      expect(count(html, "data-page-archiver-src=")).toBe(4);
+      expect(count(html, "data-page-archiver-src=")).toBe(5);
       expect(html).not.toContain("data-page-archiver-poster");
       // each video's poster is the PNG of what it showed, the paused one's poster included
-      expect(count(html, /<video[^>]* poster="data:image\/png;base64,/)).toBe(2);
-      // the playing one keeps the video's own ratio; the paused one never loaded, so has none
-      expect(count(html, "aspect-ratio: 320 / 180")).toBe(1);
+      expect(count(html, /<video[^>]* poster="data:image\/png;base64,/)).toBe(3);
+      // the playing ones keep the video's own ratio, the one in the shadow root too; the paused
+      // one never loaded, so has none
+      expect(count(html, "aspect-ratio: 320 / 180")).toBe(2);
+      // screenshotting the strip's video scrolled the strip; it is back on its first slide
+      expect(html).not.toContain("scroll-initial-target");
       expect(html).not.toContain("data-page-archiver-ratio");
     },
   },

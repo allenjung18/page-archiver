@@ -14,10 +14,13 @@ export const MAX_POSTER_FRAMES = 20;
 /** How long the videos of a frame may take to show their first picture. */
 export const VIDEO_READY_MS = 3_000;
 
-/** Waits (capped) until every video that is loading has a picture; returns how many videos the frame has. */
+/**
+ * Waits (capped) until every video that is loading has a picture; returns how many videos the frame
+ * has. Counted through the same locator that picks them one by one below, which reaches into open
+ * shadow roots (a video inside a player component); querySelectorAll would not.
+ */
 async function videosReady(frame: Frame): Promise<number> {
-  return frame.evaluate(async (capMs) => {
-    const videos = [...document.querySelectorAll("video")];
+  return frame.locator("video").evaluateAll(async (videos: HTMLVideoElement[], capMs: number) => {
     const loading = videos.filter((v) => v.readyState < 2 && v.preload !== "none" && (v.currentSrc || v.src));
     await Promise.race([
       Promise.all(loading.map((v) => new Promise((r) => v.addEventListener("loadeddata", r, { once: true })))),
@@ -28,9 +31,9 @@ async function videosReady(frame: Frame): Promise<number> {
 }
 
 /**
- * Sets POSTER_FRAME_ATTRIBUTE on every visible <video> of every frame (at most MAX_POSTER_FRAMES),
- * then scrolls the page back to the top. Returns how many videos got one. A video that cannot be
- * screenshotted is a warning, never a failed capture.
+ * Sets POSTER_FRAME_ATTRIBUTE on every visible <video> of every frame (at most MAX_POSTER_FRAMES).
+ * Returns how many videos got one. A video that cannot be screenshotted is a warning, never a
+ * failed capture.
  */
 export async function capturePosterFrames(page: Page, warn: (message: string) => void): Promise<number> {
   let done = 0;
@@ -50,7 +53,29 @@ export async function capturePosterFrames(page: Page, warn: (message: string) =>
         if (!box || box.width < 2 || box.height < 2) continue;
         const shows = await video.evaluate((v: HTMLVideoElement) => v.readyState >= 2 || Boolean(v.poster));
         if (!shows) continue;
-        const png = await video.screenshot({ timeout: 5_000 });
+        // a screenshot scrolls its element into view, the window and every box around it (a
+        // carousel on its video slide): put them all back, or the snapshot freezes them there
+        const restore = await video.evaluateHandle((v: HTMLVideoElement) => {
+          const saved: [Element, number, number][] = [];
+          for (let e: Element | null = v; e; ) {
+            const root = e.getRootNode();
+            e = e.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+            if (e) saved.push([e, e.scrollLeft, e.scrollTop]);
+          }
+          const x = window.scrollX;
+          const y = window.scrollY;
+          return () => {
+            for (const [e, left, top] of saved) e.scrollTo({ left, top, behavior: "instant" });
+            window.scrollTo({ left: x, top: y, behavior: "instant" });
+          };
+        });
+        let png: Buffer;
+        try {
+          png = await video.screenshot({ timeout: 5_000 });
+        } finally {
+          await restore.evaluate((put) => put()).catch(() => undefined);
+          await restore.dispose().catch(() => undefined);
+        }
         await video.evaluate(
           (v: HTMLVideoElement, [frameName, ratioName, uri]) => {
             v.setAttribute(frameName, uri);
@@ -65,7 +90,5 @@ export async function capturePosterFrames(page: Page, warn: (message: string) =>
       }
     }
   }
-  // a screenshot scrolls its element into view
-  if (done) await page.evaluate(() => window.scrollTo(0, 0));
   return done;
 }

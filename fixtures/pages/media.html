@@ -24,6 +24,22 @@
       <source src="{{ASSETS}}/media/still.webm" type="video/webm">
       <track kind="captions" src="{{ASSETS}}/media/none.vtt" srclang="en">
     </video>
+    <p>A player component keeps its video in a shadow root, on the second slide of a strip that
+    shows its first slide. It gets a poster frame too, and the strip stays on the slide the reader
+    saw.</p>
+    <div id="strip" style="overflow-x: auto; width: 320px; white-space: nowrap; font-size: 0">
+      <div style="display: inline-block; width: 320px; height: 180px; background: #3a6"></div>
+      <video-card style="display: inline-block; width: 320px; height: 180px"></video-card>
+    </div>
+    <script>
+      customElements.define("video-card", class extends HTMLElement {
+        connectedCallback() {
+          if (this.shadowRoot) return;
+          this.attachShadow({ mode: "open" }).innerHTML =
+            '<video id="inner" autoplay muted loop playsinline width="320" height="180" src="{{ASSETS}}/media/still.webm"></video>';
+        }
+      });
+    </script>
     <audio id="sound" preload="none" src="{{ASSETS}}/media/silence.ogg"></audio>
     <p>An audio element with no controls draws nothing; it is left out of the archive all the same.</p>
   </article>
