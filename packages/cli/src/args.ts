@@ -7,12 +7,14 @@ export interface SaveArgs {
   profile?: string;
   waitFor?: string;
   dismiss: string[];
+  /** Click the common consent-manager buttons too (default; --no-default-dismiss turns it off). */
+  defaultDismiss: boolean;
   headed: boolean;
 }
 
 export class UsageError extends Error {}
 
-export const SAVE_USAGE = `usage: pa save <url> -o <file> [--profile <dir>] [--wait-for <selector>] [--dismiss <selector>]... [--headed]`;
+export const SAVE_USAGE = `usage: pa save <url> -o <file> [--profile <dir>] [--wait-for <selector>] [--dismiss <selector>]... [--no-default-dismiss] [--headed]`;
 
 export function parseSaveArgs(argv: string[]): SaveArgs {
   let parsed;
@@ -25,6 +27,7 @@ export function parseSaveArgs(argv: string[]): SaveArgs {
         profile: { type: "string" },
         "wait-for": { type: "string" },
         dismiss: { type: "string", multiple: true },
+        "no-default-dismiss": { type: "boolean" },
         headed: { type: "boolean" },
       },
     });
@@ -42,7 +45,7 @@ export function parseSaveArgs(argv: string[]): SaveArgs {
     throw new UsageError(`not a URL: ${url}`);
   }
   if (!/^https?:$/.test(parsedUrl.protocol)) throw new UsageError(`only http and https URLs: ${url}`);
-  const args: SaveArgs = { url, out: values.out, dismiss: values.dismiss ?? [], headed: values.headed ?? false };
+  const args: SaveArgs = { url, out: values.out, dismiss: values.dismiss ?? [], defaultDismiss: !values["no-default-dismiss"], headed: values.headed ?? false };
   if (values.profile) args.profile = values.profile;
   if (values["wait-for"]) args.waitFor = values["wait-for"];
   return args;

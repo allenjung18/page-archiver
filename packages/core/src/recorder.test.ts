@@ -50,6 +50,18 @@ describe("recorder", () => {
     expect(got.kind === "hit" && got.bytes.toString()).toBe("body of http://a.test/x.png");
   });
 
+  it("says whether a URL was recorded successfully, without reading a body", () => {
+    const { page, emit } = fakePage();
+    const rec = createRecorder(page);
+    emit(response("http://a.test/f.woff2", { body: new Error("never read") }));
+    emit(response("http://a.test/missing.woff", { status: 404 }));
+    emit(response("http://a.test/final.woff2", { from: ["http://a.test/start.woff2"] }));
+    expect(rec.has("http://a.test/f.woff2#x")).toBe(true);
+    expect(rec.has("http://a.test/missing.woff")).toBe(false);
+    expect(rec.has("http://a.test/start.woff2")).toBe(true);
+    expect(rec.has("http://a.test/never")).toBe(false);
+  });
+
   it("is a miss for a URL it never saw, and ignores data: and redirects", async () => {
     const { page, emit } = fakePage();
     const rec = createRecorder(page);

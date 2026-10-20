@@ -3,6 +3,7 @@
 // selector, consent banners dismissed, a scroll to the bottom in viewport steps so lazy images
 // and first infinite-scroll pages load, idle again, back to the top, fonts ready.
 import type { Page } from "playwright";
+import { dismissConsent } from "./consent.ts";
 
 export const IDLE_QUIET_MS = 500;
 export const IDLE_CAP_MS = 15_000;
@@ -77,6 +78,8 @@ export interface SettleOptions {
   waitFor?: string | undefined;
   /** Click each of these when visible (cookie and consent banners). */
   dismiss?: readonly string[] | undefined;
+  /** Also click the first visible button of the common consent managers (consent.ts). Default true. */
+  dismissDefaults?: boolean | undefined;
   idleQuietMs?: number | undefined;
   idleCapMs?: number | undefined;
   /** How long --wait-for may take. Default 15 s. */
@@ -109,6 +112,7 @@ export async function settle(page: Page, network: NetworkTracker, opts: SettleOp
       warnings.push(`--dismiss ${selector} could not be clicked`);
     }
   }
+  if (opts.dismissDefaults !== false && (await dismissConsent(page)).length) await idle("after dismissing consent");
 
   const steps = await page.evaluate(
     async ({ maxSteps }) => {

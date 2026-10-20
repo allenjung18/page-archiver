@@ -28,6 +28,16 @@ describe("serializeDocument", () => {
 });
 
 describe("stamp", () => {
+  it("writes the summarized warnings as JSON, read back by readStamp, covered by the hash", () => {
+    const doc = parseDocument(`<!doctype html><title>t</title>`);
+    const warnings = [`2 resources could not be loaded, kept as links`, `canvas "c" & co`];
+    stamp(doc, { sourceUrl: "http://s.test/", capturedAt: AT, toolVersion: "1", warnings });
+    const { html } = finalizeStamp(serializeDocument(doc));
+    expect(JSON.parse(readStamp(html)["warnings"]!)).toEqual(warnings);
+    expect(verifyStamp(html)).toBe(true);
+    expect(readStamp(stamped(`<title>t</title>`).html)["warnings"]).toBeUndefined();
+  });
+
   it("writes charset first, then the page-archiver metas", () => {
     const { html } = stamped(`<!doctype html><html><head><title>t</title><link rel="canonical" href="https://example.com/c"></head><body>b</body></html>`);
     const head = html.slice(html.indexOf("<head>") + 6, html.indexOf("<title>"));

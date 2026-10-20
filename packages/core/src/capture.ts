@@ -6,15 +6,19 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Snapshot } from "@page-archiver/serializer";
+import type { Frame } from "playwright";
 import { ARCHIVE_FILE, TOOL_VERSION } from "./archive.ts";
 import { openBrowser, type BrowserOptions } from "./browser.ts";
-import { parseDocument, serializeDocument } from "./dom.ts";
+import { allElements, getAttr, parseDocument, removeAttr, serializeDocument, setAttr, type Document } from "./dom.ts";
+import { FRAME_ATTRIBUTE, MAX_FRAME_DEPTH, snapshotFrames, type FrameCapture } from "./frames.ts";
+import { createFontFilter } from "./inline/fonts.ts";
 import { inlineDocument } from "./inline/html.ts";
 import { createRecorder, DEFAULT_RESOURCE_CAP, DEFAULT_TOTAL_CAP } from "./recorder.ts";
-import { createResolver } from "./resources.ts";
-import { sanitizeDocument } from "./sanitize.ts";
+import { createResolver, type Resolver } from "./resources.ts";
+import { sanitizeDocument, type SanitizeReport } from "./sanitize.ts";
 import { settle, trackNetwork, type SettleOptions } from "./settle.ts";
 import { canonicalUrl, finalizeStamp, stamp } from "./stamp.ts";
+import { sizeWarning, summarizeWarnings } from "./warnings.ts";
 
 export interface CaptureOptions extends BrowserOptions, SettleOptions {
   /** Write the archive as <outDir>/archive.html. */
@@ -25,6 +29,8 @@ export interface CaptureOptions extends BrowserOptions, SettleOptions {
   timeoutMs?: number | undefined;
   resourceCap?: number | undefined;
   totalCap?: number | undefined;
+  /** Frames nested deeper than this are left empty. Default 5. */
+  maxFrameDepth?: number | undefined;
   /** The clock (tests). */
   now?: (() => Date) | undefined;
 }
@@ -40,7 +46,19 @@ export interface Archive {
   sha256: string;
   /** One line each; a capture with warnings is still a capture. */
   warnings: string[];
-  stats: { recorded: number; fetched: number; failed: number; reused: number; removed: { elements: number; attributes: number } };
+  /** What the library's meta.json takes from a capture: the archive's size, and the warnings summarized. */
+  meta: { bytes: { archive: number }; warnings: string[] };
+  stats: {
+    recorded: number;
+    fetched: number;
+    failed: number;
+    reused: number;
+    removed: { elements: number; attributes: number };
+    /** Frames written into the archive as srcdoc. */
+    frames: number;
+    /** @font-face rules dropped because the page never loaded their face. */
+    fontFacesDropped: number;
+  };
   /** The file written, when outDir or outFile was given. */
   file?: string;
 }
@@ -73,9 +91,12 @@ export async function capture(url: string, opts: CaptureOptions = {}): Promise<A
     network.dispose();
 
     const capturedAt = now();
-    const snap = (await page.evaluate(
-      `(() => { ${bundle}\n; return PageArchiverSerializer.snapshot({}); })()`,
-    )) as Snapshot;
+    const script = `(() => { ${bundle}\n; return PageArchiverSerializer.snapshot({}); })()`;
+    const tree = await snapshotFrames(page.mainFrame(), (f: Frame) => f.evaluate(script) as Promise<Snapshot>, {
+      maxDepth: opts.maxFrameDepth ?? MAX_FRAME_DEPTH,
+      warn: (m) => warnings.push(m),
+    });
+    const snap = tree.snap;
 
     const resolver = createResolver({
       recorder,
@@ -87,11 +108,14 @@ export async function capture(url: string, opts: CaptureOptions = {}): Promise<A
       },
     });
 
-    const doc = parseDocument(snap.html);
-    const removed = sanitizeDocument(doc);
-    await inlineDocument(doc, { baseUrl: snap.baseUrl, get: (u) => resolver.get(u), warn: (m) => warnings.push(m) });
+    const built = { removed: { elements: 0, attributes: 0 }, frames: 0, fontFacesDropped: 0 };
+    const doc = await buildFrame(tree, { resolver, fetched: (u) => recorder.has(u), warn: (m) => warnings.push(m), built });
     recorder.stop();
-    stamp(doc, { sourceUrl: parsed.href, canonicalUrl: canonicalUrl(doc), capturedAt, toolVersion: TOOL_VERSION });
+    const all = [...warnings, ...resolver.warnings];
+    const tooBig = sizeWarning(Buffer.byteLength(serializeDocument(doc)));
+    if (tooBig) all.push(tooBig);
+    const summary = summarizeWarnings(all);
+    stamp(doc, { sourceUrl: parsed.href, canonicalUrl: canonicalUrl(doc), capturedAt, toolVersion: TOOL_VERSION, warnings: summary });
     const { html, sha256 } = finalizeStamp(serializeDocument(doc));
 
     const archive: Archive = {
@@ -101,8 +125,9 @@ export async function capture(url: string, opts: CaptureOptions = {}): Promise<A
       title: snap.title,
       capturedAt,
       sha256,
-      warnings: [...warnings, ...resolver.warnings],
-      stats: { ...resolver.stats, removed },
+      warnings: all,
+      meta: { bytes: { archive: Buffer.byteLength(html) }, warnings: summary },
+      stats: { ...resolver.stats, ...built },
     };
     const file = opts.outFile ?? (opts.outDir ? join(opts.outDir, ARCHIVE_FILE) : undefined);
     if (file) {
@@ -114,4 +139,50 @@ export async function capture(url: string, opts: CaptureOptions = {}): Promise<A
   } finally {
     await session.close();
   }
+}
+
+interface BuildContext {
+  resolver: Resolver;
+  fetched: (url: string) => boolean;
+  warn: (message: string) => void;
+  built: { removed: SanitizeReport; frames: number; fontFacesDropped: number };
+}
+
+/**
+ * One frame's snapshot made into a sanitized, self-contained document, its child frames built the
+ * same way and written into their <iframe> elements as srcdoc.
+ */
+async function buildFrame(capture: FrameCapture, ctx: BuildContext): Promise<Document> {
+  const { snap } = capture;
+  for (const w of snap.warnings ?? []) ctx.warn(capture.depth ? `frame ${capture.url}: ${w}` : w);
+  const doc = parseDocument(snap.html);
+  const removed = sanitizeDocument(doc);
+  ctx.built.removed.elements += removed.elements;
+  ctx.built.removed.attributes += removed.attributes;
+  const fonts = createFontFilter(snap.fonts);
+  await inlineDocument(doc, { baseUrl: snap.baseUrl, get: (u) => ctx.resolver.get(u), warn: ctx.warn, fonts, fetched: ctx.fetched });
+  ctx.built.fontFacesDropped += fonts?.dropped ?? 0;
+
+  for (const el of allElements(doc)) {
+    if (el.tagName !== "iframe" && el.tagName !== "frame") continue;
+    const id = getAttr(el, FRAME_ATTRIBUTE);
+    removeAttr(el, FRAME_ATTRIBUTE);
+    const child = id ? capture.children.get(id) : undefined;
+    if (child && el.tagName === "iframe") {
+      const inner = await buildFrame(child, ctx);
+      removeAttr(el, "src");
+      removeAttr(el, "loading");
+      removeAttr(el, "srcdoc");
+      setAttr(el, "srcdoc", serializeDocument(inner));
+      ctx.built.frames++;
+      continue;
+    }
+    const src = getAttr(el, "src");
+    if (src !== null && src.trim() && !/^about:/i.test(src.trim())) {
+      // a child that is too deep or failed already has its warning
+      if (child === undefined) ctx.warn(`${el.tagName} ${src}: ${el.tagName === "frame" ? "<frame> is not supported" : "not loaded by the page"}; left empty`);
+      removeAttr(el, "src");
+    }
+  }
+  return doc;
 }

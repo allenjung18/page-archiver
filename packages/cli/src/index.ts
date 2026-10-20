@@ -7,7 +7,7 @@ const USAGE = `usage: pa <command> [args]
 
 commands:
   save <url> -o <file>   capture a page into one self-contained HTML file
-                         [--profile <dir>] [--wait-for <selector>] [--dismiss <selector>]... [--headed]
+                         [--profile <dir>] [--wait-for <selector>] [--dismiss <selector>]... [--no-default-dismiss] [--headed]
 not implemented yet: list, search, open, tag, reindex, serve, import`;
 
 function size(bytes: number): string {
@@ -22,6 +22,7 @@ async function save(argv: string[]): Promise<number> {
     headed: args.headed,
     waitFor: args.waitFor,
     dismiss: args.dismiss,
+    dismissDefaults: args.defaultDismiss,
   });
   console.log(`saved ${archive.file} (${size(Buffer.byteLength(archive.html))})`);
   for (const w of archive.warnings) console.error(`warning: ${w}`);

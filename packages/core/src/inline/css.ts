@@ -5,11 +5,16 @@
 import postcss, { type AtRule, type ChildNode, type Root } from "postcss";
 import type { Resource } from "../resources.ts";
 import { toDataUri } from "./datauri.ts";
+import { pruneFontSrc, type FontFilter } from "./fonts.ts";
 
 /** Where inlining gets bytes from (the capture's resolver), and where it reports. */
 export interface CssContext {
   get(url: string): Promise<Resource | null>;
   warn(message: string): void;
+  /** Which @font-face rules to keep (only faces the page loaded); every rule when absent. */
+  fonts?: FontFilter | undefined;
+  /** True when the browser fetched this URL while the page loaded (narrows a font's src list). */
+  fetched?: ((url: string) => boolean) | undefined;
 }
 
 /** @import nesting deeper than this is dropped with a warning. */
@@ -137,11 +142,28 @@ export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, 
   }
 
   const imports: AtRule[] = [];
+  const faces: AtRule[] = [];
   root.walkAtRules((at) => {
     const name = at.name.toLowerCase();
     if (name === "charset") at.remove();
     else if (name === "import") imports.push(at);
+    else if (name === "font-face") faces.push(at);
   });
+  for (const face of faces) {
+    if (ctx.fonts?.decide(face) === "drop") {
+      face.remove();
+      continue;
+    }
+    const fetched = ctx.fetched;
+    if (!fetched) continue;
+    face.walkDecls(/^src$/i, (decl) => {
+      decl.value = pruneFontSrc(decl.value, (entry) => {
+        const m = new RegExp(URL_TOKEN.source, "i").exec(entry);
+        const url = m ? resolveCssUrl(m[1] ?? m[2] ?? m[3] ?? "", sheetUrl) : null;
+        return !!url && fetched(url);
+      });
+    });
+  }
 
   const chain = [...stack, sheetUrl];
   for (const at of imports) {

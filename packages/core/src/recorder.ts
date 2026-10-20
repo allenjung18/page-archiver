@@ -46,6 +46,8 @@ export interface Recorder {
   get(url: string): Promise<Lookup>;
   /** Every recorded URL, in arrival order. */
   urls(): string[];
+  /** True when a successful response for url was recorded (no body is read). */
+  has(url: string): boolean;
   /** Body bytes handed out so far. */
   bytesRead(): number;
   /** Stops recording. Lookups keep working while the page is open. */
@@ -110,6 +112,11 @@ export function createRecorder(page: ResponseSource, opts: RecorderOptions = {})
       return { kind: "hit", url, status: entry.status, mime: entry.mime, bytes };
     },
     urls: () => [...entries.keys()],
+    has(url) {
+      const key = resourceKey(url);
+      const entry = entries.get(aliases.get(key) ?? key);
+      return !!entry && ok(entry.status);
+    },
     bytesRead: () => total,
     stop: () => void page.off("response", onResponse),
   };

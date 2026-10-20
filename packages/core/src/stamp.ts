@@ -13,6 +13,8 @@ export interface StampInfo {
   canonicalUrl?: string | null;
   capturedAt: Date;
   toolVersion: string;
+  /** The capture's warnings, summarized; written as a JSON array when there are any. */
+  warnings?: readonly string[] | undefined;
 }
 
 /** The page's canonical URL (its <link rel=canonical href>), or null. */
@@ -47,6 +49,7 @@ export function stamp(doc: Document, info: StampInfo): void {
   if (info.canonicalUrl) add("canonical-url", info.canonicalUrl);
   add("captured-at", info.capturedAt.toISOString());
   add("tool-version", info.toolVersion);
+  if (info.warnings?.length) add("warnings", JSON.stringify(info.warnings));
   add("sha256", ZERO_HASH);
   for (const m of metas) m.parentNode = h;
   h.childNodes.unshift(...metas);
