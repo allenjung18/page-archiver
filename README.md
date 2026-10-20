@@ -67,8 +67,10 @@ inlines every stylesheet (`@import` chains and `url()`s resolved against each sh
 URL) and image as `data:` URIs, removes every script, event handler, `javascript:` URL,
 `<base>`, CSP `<meta>`, preload/prefetch hint and `<noscript>`, makes links absolute, and
 stamps the file with `page-archiver:*` metas (source URL, capture time, tool version, and
-a sha256 of the file). A resource that cannot be had is kept as an absolute link and
-reported as a warning.
+a sha256 of the file). A resource that cannot be had (the site answers an error, or it is over a
+size cap) is set aside: its URL moves into a `data-page-archiver-unfetched-*` attribute or a CSS
+comment, and a warning names it, so the archive never asks the network for anything, even
+opened straight from disk.
 
 Video and audio files are not archived: they are often hundreds of megabytes, streamed in
 pieces, or both. Each `<video>` keeps a still of the frame it was showing as its poster (or the
@@ -262,8 +264,8 @@ managers and a few hundred requests. `npm run smoke` captures every page listed 
 `test/smoke-urls.txt` from the live web and opens each archive offline: it fails a page on any
 request or CSP violation the archive makes, exactly as the offline test does, or when the page's
 expected text is missing, which tells a saved article from a bot wall. A resource the site
-refused (an HTTP error) is kept as a link and so fails the page too; the report counts those
-apart. `test-results/smoke.md` gets a table of results, sizes,
+refused (an HTTP error) is set aside, so it is not a request. `test-results/smoke.md` gets a
+table of results, sizes,
 live-versus-offline pixel differences and warnings. It is never part of `npm test` or
 `npm run test:e2e`.
 

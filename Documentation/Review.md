@@ -55,6 +55,16 @@ assertion, and passes again with the change restored.
 | 16 | a smoke test that threw while opening the archive, or ran out of time, wrote no row, so the report left out exactly the failing page | a provisional failing row is written first; opening the archive is caught and reported as a problem | none automatic (the smoke run needs the network); `Testing.md` describes it |
 | 17 | the smoke run excused CSP violations for resources kept as links, so it was looser than the offline assertion it claims to run | every violation fails the page; kept-as-link ones are named apart | `list.test.ts` (`splitViolations`); recipe and substack are now recorded misses |
 
+## Decided by the owner
+
+| # | What | Decision | Fix | Test that fails without it |
+|---|---|---|---|---|
+| 18 | a resource the capture cannot have was kept as an absolute link: a refused request under the archive CSP, and a real fetch from the live site (on the recipe page, ad-sync pixels) when the file is opened from disk | set it aside (D-516 (a), 2026-10-20): an archive asks the network for nothing, at the cost that an archive opened online no longer shows what the capture missed | `inline/html.ts` moves the attribute to `data-page-archiver-unfetched-<name>` (`UNFETCHED_ATTRIBUTE_PREFIX`); `inline/css.ts` turns a `url()` into `url("data:,")` with a comment naming the URL and an `@import` into a comment; warnings end `; set aside`; the smoke run's "kept as links" count is gone | the `unfetched` fixture (six HTTP 404s, opened again with no CSP: zero requests); the set-aside tests in `inline/html.test.ts` and `inline/css.test.ts` |
+
+After it, the smoke run passes all ten pages (Playwright: 10 passed, no recorded misses): recipe
+and substack, the two misses, now save cleanly. Live-versus-offline difference at or under 1.25%,
+except recipe at 3.75% (read, not asserted: real pages move).
+
 ## Should-fix
 
 None.
@@ -68,4 +78,3 @@ None.
 | 11 | substack | "scrolled 60 screens and stopped": the comments keep loading as the page is scrolled | `MAX_SCROLL_STEPS` is the guard against endless pages; the article itself is all there |
 | 12 | (extension) | a page saved from Chrome gets no poster frames: Playwright's element screenshot is not available to an extension | the video keeps the page's own poster; capturing a frame from the extension would need `chrome.tabs.captureVisibleTab` and scrolling the reader's tab |
 | 13 | smoke list | the committed pages were chosen for coverage, not by the person who uses the archive | replace them with your own pages and run `npm run smoke` |
-| 18 | recipe, substack | a resource the capture cannot have is kept as an absolute link. Offline under the archive CSP that is a refused request; opened from disk without the CSP, the browser fetches it (on the recipe page, ad-sync pixels). Setting such a URL aside, as video sources are (`data-page-archiver-src`), would make every archive request-free | it changes a documented behaviour from the first chunks (an online reader still sees a resource the capture missed); it is the owner's choice |
