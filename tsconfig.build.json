@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/serializer" },
+    { "path": "packages/core" },
+    { "path": "packages/library" },
+    { "path": "packages/cli" },
+    { "path": "packages/server" },
+    { "path": "packages/extension" }
+  ]
+}

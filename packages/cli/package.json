@@ -1,0 +1,20 @@
+{
+  "name": "@page-archiver/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The pa command line.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "pa": "./dist/index.js"
+  },
+  "dependencies": {
+    "@page-archiver/core": "0.0.0",
+    "@page-archiver/library": "0.0.0"
+  }
+}

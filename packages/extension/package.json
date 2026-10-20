@@ -1,0 +1,13 @@
+{
+  "name": "@page-archiver/extension",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Chrome MV3 extension: capture the tab you are reading.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  }
+}

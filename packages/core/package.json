@@ -1,0 +1,13 @@
+{
+  "name": "@page-archiver/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Drives Chromium and assembles the self-contained archive.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "page-archiver",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Save a web page as one self-contained HTML file that opens offline.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "workspaces": [
+    "packages/serializer",
+    "packages/core",
+    "packages/library",
+    "packages/cli",
+    "packages/server",
+    "packages/extension"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json && npm run build -w @page-archiver/serializer && tsc -p tsconfig.json",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run",
+    "test:e2e": "npm run build && playwright test",
+    "fixtures": "node fixtures/server.ts",
+    "fixtures:images": "node fixtures/make-images.ts",
+    "clean": "tsc -b tsconfig.build.json --clean && rm -rf packages/serializer/dist test-results playwright-report"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@playwright/test": "1.61.1",
+    "@types/node": "24.19.2",
+    "@types/pngjs": "6.0.5",
+    "esbuild": "0.28.2",
+    "eslint": "9.39.5",
+    "globals": "16.5.0",
+    "pixelmatch": "7.1.0",
+    "pngjs": "7.0.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.12"
+  }
+}

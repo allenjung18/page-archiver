@@ -1,0 +1,41 @@
+/* Cross-origin stylesheet. The background url() is relative to THIS sheet, not the page. */
+body {
+  margin: 0;
+  background: #f4efe3 url(../img/paper.png) repeat;
+  color: #1d1b16;
+  font: 18px/1.6 Georgia, "Times New Roman", serif;
+}
+main {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+  background: rgba(255, 255, 255, 0.85);
+}
+h1 {
+  font-size: 40px;
+  line-height: 1.15;
+  margin: 0 0 8px;
+}
+.byline {
+  color: #6b6455;
+  font-size: 15px;
+  margin: 0 0 24px;
+}
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+figure {
+  margin: 28px 0;
+}
+figcaption {
+  font-size: 14px;
+  color: #6b6455;
+}
+blockquote {
+  margin: 24px 0;
+  padding: 4px 20px;
+  border-left: 4px solid #c47a2c;
+  font-style: italic;
+}

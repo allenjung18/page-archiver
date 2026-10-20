@@ -1,0 +1,17 @@
+{
+  "name": "@page-archiver/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local HTTP API and reader UI, bound to 127.0.0.1.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@page-archiver/core": "0.0.0",
+    "@page-archiver/library": "0.0.0"
+  }
+}

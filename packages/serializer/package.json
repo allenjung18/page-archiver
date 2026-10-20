@@ -1,0 +1,16 @@
+{
+  "name": "@page-archiver/serializer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runs inside a page: walks the live DOM into a frozen clone plus a resource manifest. Bundled to one IIFE.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@page-archiver/library",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The archive folder layout and its search index.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@page-archiver/core": "0.0.0"
+  }
+}

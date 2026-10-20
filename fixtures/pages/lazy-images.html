@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lazy images</title>
+<style>
+  body { margin: 0; font: 17px/1.55 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #222; background: #fff; }
+  main { max-width: 560px; margin: 0 auto; padding: 24px; }
+  section { margin: 0 0 48px; }
+  img { display: block; width: 480px; height: 270px; background: #e6e6e6; }
+  p { margin: 12px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Eight pictures, most of them lazy</h1>
+  <p>The first image loads eagerly. Images 2 to 6 use <code>loading="lazy"</code>. Images 7 and 8 keep their URL in <code>data-src</code> and a script copies it into <code>src</code> when they scroll into view, the way many sites still do it.</p>
+  <section>
+    <h2>Picture 1</h2>
+    <img src="{{ASSETS}}/img/lazy-1.png" width="480" height="270" alt="Gradient 1">
+    <p>Paragraph under picture 1. It is long enough to push the next picture well below the fold, so a capture that does not scroll the page will miss it. The text itself is ordinary; only the image matters here.</p>
+  </section>
+  <section>
+    <h2>Picture 2</h2>
+    <img src="{{ASSETS}}/img/lazy-2.png" loading="lazy" width="480" height="270" alt="Gradient 2">
+    <p>Paragraph under picture 2. It is long enough to push the next picture well below the fold, so a capture that does not scroll the page will miss it. The text itself is ordinary; only the image matters here.</p>
+  </section>
+  <section>
+    <h2>Picture 3</h2>
+    <img src="{{ASSETS}}/img/lazy-3.png" loading="lazy" width="480" height="270" alt="Gradient 3">
+    <p>Paragraph under picture 3. It is long enough to push the next picture well below the fold, so a capture that does not scroll the page will miss it. The text itself is ordinary; only the image matters here.</p>
+  </section>
+  <section>
+    <h2>Picture 4</h2>
+    <img src="{{ASSETS}}/img/lazy-4.png" loading="lazy" width="480" height="270" alt="Gradient 4">
+    <p>Paragraph under picture 4. It is long enough to push the next picture well below the fold, so a capture that does not scroll the page will miss it. The text itself is ordinary; only the image matters here.</p>
+  </section>
+  <section>
+    <h2>Picture 5</h2>
+    <img src="{{ASSETS}}/img/lazy-5.png" loading="lazy" width="480" height="270" alt="Gradient 5">
+    <p>Paragraph under picture 5. It is long enough to push the next picture well below the fold, so a capture that does not scroll the page will miss it. The text itself is ordinary; only the image matters here.</p>
+  </section>
+  <section>
+    <h2>Picture 6</h2>
+    <img src="{{ASSETS}}/img/lazy-6.png" loading="lazy" width="480" height="270" alt="Gradient 6">
+    <p>Paragraph under picture 6. It is long enough to push the next picture well below the fold, so a capture that does not scroll the page will miss it. The text itself is ordinary; only the image matters here.</p>
+  </section>
+  <section>
+    <h2>Picture 7</h2>
+    <img data-src="{{ASSETS}}/img/lazy-7.png" class="js-lazy" width="480" height="270" alt="Gradient 7">
+    <p>Paragraph under picture 7. It is long enough to push the next picture well below the fold, so a capture that does not scroll the page will miss it. The text itself is ordinary; only the image matters here.</p>
+  </section>
+  <section>
+    <h2>Picture 8</h2>
+    <img data-src="{{ASSETS}}/img/lazy-8.png" class="js-lazy" width="480" height="270" alt="Gradient 8">
+    <p>Paragraph under picture 8. It is long enough to push the next picture well below the fold, so a capture that does not scroll the page will miss it. The text itself is ordinary; only the image matters here.</p>
+  </section>
+</main>
+<script>
+  const io = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const img = entry.target;
+      img.src = img.dataset.src;
+      img.removeAttribute("data-src");
+      io.unobserve(img);
+    }
+  }, { rootMargin: "0px" });
+  document.querySelectorAll("img.js-lazy").forEach((img) => io.observe(img));
+</script>
+</body>
+</html>
