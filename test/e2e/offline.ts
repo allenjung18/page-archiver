@@ -66,6 +66,10 @@ export async function openOffline(
     await page.waitForLoadState("networkidle");
     await page.evaluate(async () => {
       await document.fonts.ready;
+      // decoding="async" images below the fold may not be painted yet: a full-page screenshot
+      // would show them blank although the archive has them
+      const decodes = [...document.images].map((img) => img.decode().catch(() => undefined));
+      await Promise.race([Promise.all(decodes), new Promise((r) => setTimeout(r, 5_000))]);
       // two frames, so late violation events are dispatched before we read them
       for (let i = 0; i < 2; i++) await new Promise((r) => requestAnimationFrame(() => r(null)));
     });
