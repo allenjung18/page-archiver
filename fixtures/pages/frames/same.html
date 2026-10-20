@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>same-origin frame</title>
+<style>
+  body { margin: 0; padding: 12px; font: 15px sans-serif; background: #eef1fb; }
+  iframe { width: 100%; height: 150px; border: 1px dashed #557; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<p id="msg">Same-origin frame.</p>
+<iframe src="{{ASSETS}}/frames/leaf.html" title="leaf"></iframe>
+<script>document.getElementById("msg").textContent = "Same-origin frame, its text set by its own script.";</script>
+</body>
+</html>

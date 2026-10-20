@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cookie wall</title>
+<style>
+  body { margin: 0; font: 17px/1.6 Georgia, serif; color: #222; background: #fff; }
+  body.locked { overflow: hidden; }
+  .masthead { position: sticky; top: 0; z-index: 10; padding: 14px 24px; background: #12263a; color: #fff; font: bold 20px -apple-system, Arial, sans-serif; }
+  main { max-width: 680px; margin: 0 auto; padding: 24px; }
+  /* the shape of a common consent manager's wall: a full-screen overlay and a dialog */
+  #onetrust-consent-sdk { position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.6); display: flex; align-items: flex-end; }
+  #onetrust-banner-sdk { width: 100%; padding: 24px 32px; background: #fff; font: 15px -apple-system, Arial, sans-serif; }
+  #onetrust-banner-sdk button { margin-right: 12px; padding: 10px 18px; font: inherit; }
+</style>
+</head>
+<body class="locked">
+<div class="masthead">The Daily Fixture</div>
+<main>
+  <h1>An article behind a consent wall</h1>
+  <p>Until a button is clicked, the page cannot be read or scrolled. An archive has no working buttons, so the capture has to click one first.</p>
+  <img src="{{ASSETS}}/img/hero.png" width="640" height="240" alt="">
+  <p>The masthead above is sticky: it stays at the top while the page scrolls. The text goes on long enough to need scrolling at all.</p>
+  <p>Paragraph three. The consent manager's default buttons are the ones the capture knows; this page uses the names one of the common managers uses.</p>
+  <p>Paragraph four. Refusing is tried before accepting, so this page should record a refusal.</p>
+  <img src="{{ASSETS}}/img/figure.png" width="320" height="180" alt="">
+  <p>Paragraph six, the last.</p>
+</main>
+<div id="onetrust-consent-sdk">
+  <div id="onetrust-banner-sdk" role="dialog" aria-label="Cookie consent">
+    <p>We and our 842 partners use cookies to do many things.</p>
+    <button id="onetrust-accept-btn-handler">Accept all</button>
+    <button id="onetrust-reject-all-handler">Reject all</button>
+  </div>
+</div>
+<script>
+  function choose(choice) {
+    document.getElementById("onetrust-consent-sdk").remove();
+    document.body.classList.remove("locked");
+    document.body.dataset.consent = choice;
+  }
+  document.getElementById("onetrust-accept-btn-handler").addEventListener("click", () => choose("accepted"));
+  document.getElementById("onetrust-reject-all-handler").addEventListener("click", () => choose("rejected"));
+</script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shadow DOM</title>
+<style>
+  body { margin: 0; font: 16px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #1f2933; background: #eef2f5; }
+  main { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Web components</h1>
+  <p>Everything inside the cards lives in open shadow roots; outerHTML does not include any of it.</p>
+  <div class="grid">
+    <product-card price="24.00"><span slot="name">Notebook</span>Lined, 120 pages.</product-card>
+    <product-card price="3.50"><span slot="name">Pencil</span>HB, cedar.</product-card>
+  </div>
+  <!-- a declarative shadow root written in the HTML: the parser attaches it, and it must survive -->
+  <section-note>
+    <template shadowrootmode="open">
+      <style>:host { display: block; margin-top: 24px; padding: 16px 20px; border: 2px dashed #6b8aa5; border-radius: 8px; background: #fff; } b { color: #6b2e9e; }</style>
+      <b>Declared in HTML:</b> <slot></slot>
+    </template>
+    a shadow root from the markup itself.
+  </section-note>
+</main>
+<script>
+  const ASSETS = "{{ASSETS}}";
+  customElements.define("price-tag", class extends HTMLElement {
+    connectedCallback() {
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML = `<style>span { display: inline-block; padding: 2px 10px; border-radius: 999px; background: #1f7a52; color: #fff; font-weight: 600; }</style><span>$${this.getAttribute("amount")}</span>`;
+    }
+  });
+  customElements.define("product-card", class extends HTMLElement {
+    connectedCallback() {
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML = `
+        <style>
+          :host { display: block; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+          img { display: block; width: 100%; height: 160px; object-fit: cover; }
+          .body { padding: 14px 16px; }
+          ::slotted([slot=name]) { display: block; font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+          .bg { height: 24px; background: url("${ASSETS}/img/paper.png"); }
+        </style>
+        <img src="${ASSETS}/img/lazy-${this.getAttribute("price") === "3.50" ? 4 : 2}.png" alt="">
+        <div class="body"><slot name="name"></slot><slot></slot><p><price-tag amount="${this.getAttribute("price")}"></price-tag></p></div>
+        <div class="bg"></div>`;
+    }
+  });
+</script>
+</body>
+</html>

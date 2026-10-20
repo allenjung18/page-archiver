@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>cross-origin frame</title>
+<link rel="stylesheet" href="frame.css">
+</head>
+<body>
+<h2>Cross-origin frame</h2>
+<img src="../img/lazy-1.png" width="240" height="135" alt="">
+<p id="msg">Static text.</p>
+<script>document.getElementById("msg").textContent = "Rendered by the frame's own script.";</script>
+</body>
+</html>

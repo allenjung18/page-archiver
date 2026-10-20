@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adopted stylesheets</title>
+<style>body { margin: 0; font: 17px/1.55 Georgia, serif; }</style>
+</head>
+<body>
+<main>
+  <h1>Constructed sheets</h1>
+  <p class="lede">The page's look comes from <code>document.adoptedStyleSheets</code>, which never appear in the DOM.</p>
+  <info-card><span slot="title">A card from a shadow root</span>Its styles are adopted by the shadow root.</info-card>
+  <info-card><span slot="title">A second card</span>Same constructed sheet, shared.</info-card>
+</main>
+<script>
+  const ASSETS = "{{ASSETS}}";
+  const page = new CSSStyleSheet();
+  page.replaceSync(`
+    body { color: #2a2238; background: #efeaf6; }
+    main { max-width: 720px; margin: 0 auto; padding: 40px 24px; }
+    h1 { margin: 0 0 12px; font-size: 40px; color: #5b2a86; }
+    .lede { padding: 16px 20px; background: #fff url("${ASSETS}/img/paper.png") repeat-y; border-radius: 8px; }
+  `);
+  // a print-only constructed sheet must not apply on screen
+  const print = new CSSStyleSheet({ media: "print" });
+  print.replaceSync(`main { display: none; }`);
+  document.adoptedStyleSheets = [page, print];
+
+  const card = new CSSStyleSheet();
+  card.replaceSync(`
+    :host { display: block; margin: 20px 0; border-radius: 10px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+    .banner { height: 120px; background: url("${ASSETS}/img/hero.png") center / cover; }
+    .body { padding: 16px 20px; }
+    ::slotted([slot=title]) { display: block; font-weight: bold; font-size: 22px; color: #5b2a86; }
+  `);
+  customElements.define("info-card", class extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: "open" });
+      root.adoptedStyleSheets = [card];
+      root.innerHTML = `<div class="banner"></div><div class="body"><slot name="title"></slot><slot></slot></div>`;
+    }
+  });
+</script>
+</body>
+</html>

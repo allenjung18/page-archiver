@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web fonts</title>
+<style>
+  /* the way font services write it: one family, a face per unicode-range subset, and a src list
+     with fallbacks. Only the latin subset is used by this page, so only it is ever loaded. */
+  @font-face {
+    font-family: "Pacifico Test";
+    font-style: normal;
+    font-weight: 400;
+    font-display: block;
+    src: url("{{ASSETS}}/fonts/pacifico-cyrillic-400-normal.woff2") format("woff2");
+    unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+  }
+  @font-face {
+    font-family: "Pacifico Test";
+    font-style: normal;
+    font-weight: 400;
+    font-display: block;
+    src: url("{{ASSETS}}/fonts/pacifico-latin-ext-400-normal.woff2") format("woff2");
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+1E00-1E9F, U+20A0-20AB, U+A720-A7FF;
+  }
+  @font-face {
+    font-family: "Pacifico Test";
+    font-style: normal;
+    font-weight: 400;
+    font-display: block;
+    src: url("{{ASSETS}}/fonts/pacifico-latin-400-normal.woff2") format("woff2"), url("{{ASSETS}}/fonts/pacifico-latin-400-normal.woff") format("woff");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F;
+  }
+  /* declared, never used by any element */
+  @font-face {
+    font-family: Unused Display;
+    font-weight: 700;
+    src: url("{{ASSETS}}/fonts/pacifico-latin-ext-400-normal.woff2") format("woff2");
+  }
+  body { margin: 0; font: 18px/1.6 Georgia, serif; color: #2b2118; background: #fbf5ec; }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 24px; }
+  h1, .script { font-family: "Pacifico Test", cursive; font-weight: 400; }
+  h1 { font-size: 56px; margin: 0 0 16px; color: #b0412e; }
+  .script { font-size: 30px; color: #2d5d7b; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Handwritten headline</h1>
+  <p class="script">A web font, loaded from another origin.</p>
+  <p>Body text stays in a system serif. Of the four @font-face rules on this page, only the latin
+  subset of the display face is ever loaded; an archive needs that one and nothing else.</p>
+</main>
+</body>
+</html>

@@ -26,12 +26,21 @@ export async function settle(page: Page): Promise<void> {
   });
 }
 
-/** Opens a fixture live, settles it, checks every image loaded, and returns a full-page PNG. */
-export async function screenshotLive(browser: Browser, url: string): Promise<Buffer> {
+/** Fixtures whose reader clicks something first: the live reference is the page after that click. */
+export const LIVE_DISMISS: Readonly<Record<string, string>> = {
+  "cookie-wall": "#onetrust-reject-all-handler",
+};
+
+/**
+ * Opens a fixture live, settles it, checks every image loaded, and returns a full-page PNG.
+ * `dismiss` is clicked first, the way a reader closes a consent wall before reading.
+ */
+export async function screenshotLive(browser: Browser, url: string, opts: { dismiss?: string } = {}): Promise<Buffer> {
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
   try {
     const page = await context.newPage();
     await page.goto(url, { waitUntil: "load" });
+    if (opts.dismiss) await page.click(opts.dismiss);
     await settle(page);
     const broken = await page.evaluate(() =>
       [...document.images]

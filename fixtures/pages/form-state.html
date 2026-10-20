@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Form state</title>
+<style>
+  body { margin: 0; font: 16px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #222; background: #f6f6f6; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px; }
+  form { display: grid; grid-template-columns: 160px 1fr; gap: 12px 16px; align-items: center; padding: 20px; background: #fff; border-radius: 8px; }
+  input[type=text], textarea, select { font: inherit; padding: 6px 8px; width: 100%; box-sizing: border-box; }
+  textarea { height: 72px; }
+  .list { height: 160px; overflow: auto; margin-top: 24px; border: 1px solid #bbb; background: #fff; }
+  .list div { height: 40px; padding: 0 12px; line-height: 40px; border-bottom: 1px solid #eee; }
+  .list div:nth-child(odd) { background: #eef4fb; }
+  .strip { margin-top: 24px; overflow-x: auto; white-space: nowrap; width: 600px; border: 1px solid #bbb; background: #fff; }
+  .strip img { width: 240px; height: 135px; margin: 8px; vertical-align: top; }
+  details { margin-top: 24px; padding: 12px 16px; background: #fff; border-radius: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>A form the reader filled in</h1>
+  <form>
+    <label for="name">Name</label><input id="name" type="text" value="the default">
+    <label for="secret">Password</label><input id="secret" type="password">
+    <label>Newsletter</label><span><input id="news" type="checkbox"> weekly <input id="terms" type="checkbox" checked> terms</span>
+    <label>Plan</label><span><input type="radio" name="plan" id="free" checked> free <input type="radio" name="plan" id="pro"> pro</span>
+    <label for="size">Size</label><select id="size"><option>small</option><option>medium</option><option>large</option></select>
+    <label for="multi">Toppings</label><select id="multi" multiple size="3"><option>basil</option><option>olives</option><option>chili</option></select>
+    <label for="notes">Notes</label><textarea id="notes">placeholder text from the HTML</textarea>
+    <label></label><span><input type="submit" value="Send"> <input type="reset"></span>
+  </form>
+  <details id="more"><summary>More details</summary><p>Opened by the reader; an archive opens it too.</p></details>
+  <div class="list" id="list"></div>
+  <div class="strip" id="strip"></div>
+</main>
+<script>
+  const list = document.getElementById("list");
+  for (let i = 1; i <= 30; i++) list.insertAdjacentHTML("beforeend", `<div>Row ${i}</div>`);
+  const strip = document.getElementById("strip");
+  for (let i = 1; i <= 6; i++) strip.insertAdjacentHTML("beforeend", `<img src="{{ASSETS}}/img/lazy-${i}.png" alt="">`);
+  // what a reader would have done: typed, ticked, chosen, opened, scrolled
+  document.getElementById("name").value = "Ada Lovelace";
+  document.getElementById("secret").value = "hunter2-never-archived";
+  document.getElementById("news").checked = true;
+  document.getElementById("terms").checked = false;
+  document.getElementById("pro").checked = true;
+  document.getElementById("size").selectedIndex = 2;
+  document.getElementById("multi").options[0].selected = true;
+  document.getElementById("multi").options[2].selected = true;
+  document.getElementById("notes").value = "Typed by the reader,\nover two lines.";
+  document.getElementById("more").open = true;
+  list.scrollTop = 400;
+  strip.scrollLeft = 512;
+</script>
+</body>
+</html>

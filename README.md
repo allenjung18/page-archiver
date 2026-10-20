@@ -8,8 +8,9 @@ clean reader-view copy and goes into a local, full-text-searchable library you
 browse in a small local web app. Your archive is a folder on your disk; no
 Pocket, no Instapaper, no subscription.
 
-Status: the capture core works from the terminal (`pa save <url> -o <file>`). The
-library, reader view, local UI and extension are not built yet.
+Status: the capture core works from the terminal (`pa save <url> -o <file>`), including
+CSS-in-JS and adopted stylesheets, shadow DOM, canvas, form state, iframes and cookie walls.
+The library, reader view, local UI and extension are not built yet.
 
 ## Saving a page
 
@@ -20,7 +21,8 @@ node packages/cli/dist/index.js save https://example.com/article -o article.html
 
 Options: `--profile <dir>` (a persistent Chromium profile, for pages behind a login),
 `--wait-for <selector>` (a client-rendered page's content), `--dismiss <selector>`
-(repeatable: cookie or consent buttons to click first), `--headed`.
+(repeatable: cookie or consent buttons to click first), `--no-default-dismiss` (do not
+click the built-in list of common consent-manager reject/accept buttons), `--headed`.
 
 What a capture does: loads the page in Chromium (1280x900), records every response body,
 waits for the network to go quiet, scrolls to the bottom so lazy images load, then
@@ -31,6 +33,27 @@ URL) and image as `data:` URIs, removes every script, event handler, `javascript
 stamps the file with `page-archiver:*` metas (source URL, capture time, tool version, and
 a sha256 of the file). A resource that cannot be had is kept as an absolute link and
 reported as a warning.
+
+What the serializer freezes from the live page, not the HTML source:
+
+- **Styles**: a `<style>` whose rules script changed (`insertRule`, CSS-in-JS libraries that
+  write only to the CSSOM) is written from its CSSOM; sheets adopted by the document or a
+  shadow root (`adoptedStyleSheets`) become `<style>` elements at the end of that root; a
+  disabled sheet stays off.
+- **Shadow DOM**: open shadow roots become declarative shadow DOM
+  (`<template shadowrootmode="open">`), frozen like the rest. Closed roots cannot be read.
+- **Canvas**: each canvas becomes an `<img>` of its bitmap. A canvas tainted by a
+  cross-origin image cannot be read; it stays empty and is reported.
+- **State**: typed values, checked boxes, selected options, open `<details>` (never a
+  password or file input's value), and the scroll position of scrolled boxes, restored
+  without script through `scroll-initial-target` where the browser supports it.
+- **Frames**: every frame is captured recursively (same and cross origin) and written into
+  its `<iframe>` as `srcdoc`, up to 5 levels deep; deeper frames are left empty and reported.
+- **Fonts**: only `@font-face` rules the page actually loaded are kept, each with the one
+  source file the browser fetched.
+
+Warnings (resources over a size cap, resources that failed, tainted canvases, frames left
+empty, an archive over 50 MB) are summarized in the archive's `page-archiver:warnings` meta.
 
 ## Layout
 
@@ -64,10 +87,20 @@ Set `PAGES_PORT` / `ASSETS_PORT` to move the fixture server.
 
 ## The offline test
 
-`test/e2e/offline.spec.ts` captures each fixture (plain article, lazy images, an `@import`
-chain, a client-rendered SPA), then opens the archive in a fresh
+`test/e2e/offline.spec.ts` captures each fixture page in `fixtures/pages/` (one per hard
+case: CSS-in-JS, adopted sheets, `srcset`, lazy images, web fonts, `@import`, shadow DOM,
+canvas, same- and cross-origin iframes, a sticky cookie wall, a client-rendered SPA, form
+state), then opens the archive in a fresh
 browser context that is offline, with a route that aborts every request except the
 document, served under a CSP that allows only inline styles and `data:` URIs. It asserts
 zero blocked requests, zero CSP violations, and a full-page screenshot within 1% of the
 live page. `test/e2e/offline-harness.spec.ts` proves the harness sees a request, a
 violation and a script when an archive has one.
+
+## The SingleFile oracle
+
+`npm run oracle` captures every fixture with page-archiver and with
+[SingleFile](https://github.com/gildas-lormeau/single-file-cli) (`single-file-cli`, pinned,
+run through `npx` as a separate program and never linked or bundled), puts both through the
+same offline assertion, and writes a pass/size table to `test-results/oracle.md`. It is a
+comparison, not a gate: the run fails only when page-archiver fails.

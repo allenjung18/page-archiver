@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frames</title>
+<style>
+  body { margin: 0; font: 16px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #222; background: #fff; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  h1 { grid-column: 1 / -1; margin: 0; }
+  iframe { width: 100%; height: 300px; border: 1px solid #999; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Embedded documents</h1>
+  <div><p>Same origin, with a cross-origin frame inside it:</p><iframe src="frames/same.html" title="same"></iframe></div>
+  <div><p>Cross origin:</p><iframe src="{{ASSETS}}/frames/cross.html" title="cross"></iframe></div>
+  <div><p>srcdoc:</p><iframe title="srcdoc" srcdoc="<style>body{margin:0;font:15px sans-serif;background:#fdf1e6}p{margin:16px}</style><p>An inline document from a <b>srcdoc</b> attribute.</p><img src='{{ASSETS}}/img/figure.png' width='320' height='180' alt=''>"></iframe></div>
+  <div><p>Written by script into about:blank:</p><iframe id="blank" title="blank"></iframe></div>
+</main>
+<script>
+  const doc = document.getElementById("blank").contentDocument;
+  doc.open();
+  doc.write(`<!doctype html><style>body{margin:0;background:#e9f3ec;font:15px sans-serif}h2{margin:16px;color:#1d6b3a}</style><h2>Built by the parent</h2><img src="{{ASSETS}}/img/lazy-6.png" width="240" height="135" alt="">`);
+  doc.close();
+</script>
+</body>
+</html>
