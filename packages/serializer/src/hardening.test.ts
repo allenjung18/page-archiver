@@ -65,6 +65,26 @@ describe("canvas", () => {
     expect(readCanvas(c)).toEqual({ kind: "empty" });
   });
 
+  it("tells a cleared WebGL canvas (blank, no 2D context) from a blank 2D one", () => {
+    const BLANK = "data:image/png;base64,BLANK";
+    const proto = HTMLCanvasElement.prototype;
+    const original = proto.toDataURL;
+    proto.toDataURL = () => BLANK; // every fresh canvas of this size encodes to the same PNG
+    try {
+      const c = document.createElement("canvas");
+      c.width = 300;
+      c.height = 150;
+      c.getContext = (() => ({})) as unknown as HTMLCanvasElement["getContext"];
+      expect(readCanvas(c)).toEqual({ kind: "empty" });
+      c.getContext = (() => null) as unknown as HTMLCanvasElement["getContext"];
+      expect(readCanvas(c)).toEqual({ kind: "cleared" });
+      c.toDataURL = () => "data:image/png;base64,DRAWN";
+      expect(readCanvas(c)).toEqual({ kind: "image", dataUrl: "data:image/png;base64,DRAWN" });
+    } finally {
+      proto.toDataURL = original;
+    }
+  });
+
   it("swaps the clone for an <img> keeping its attributes, and warns for a tainted one", () => {
     document.body.innerHTML = `<canvas id="ok" class="k" width="10" height="5">fallback</canvas><canvas id="bad" width="3" height="3"></canvas>`;
     (document.getElementById("ok") as HTMLCanvasElement).toDataURL = () => "data:image/png;base64,QUJD";

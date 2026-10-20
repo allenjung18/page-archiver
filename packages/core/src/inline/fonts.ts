@@ -98,7 +98,8 @@ export function createFontFilter(faces: readonly FontFaceInfo[] | undefined): Fo
   const status = new Map<string, boolean>();
   for (const f of faces) {
     const key = faceKey(f);
-    status.set(key, (status.get(key) ?? false) || f.status === "loaded");
+    // "unloaded" was never asked for and "error" can never render; a face still loading is kept
+    status.set(key, (status.get(key) ?? false) || (f.status !== "unloaded" && f.status !== "error"));
   }
   const filter: FontFilter = {
     dropped: 0,

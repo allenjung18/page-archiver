@@ -141,7 +141,7 @@ export async function capture(url: string, opts: CaptureOptions = {}): Promise<A
   }
 }
 
-interface BuildContext {
+export interface BuildContext {
   resolver: Resolver;
   fetched: (url: string) => boolean;
   warn: (message: string) => void;
@@ -152,7 +152,7 @@ interface BuildContext {
  * One frame's snapshot made into a sanitized, self-contained document, its child frames built the
  * same way and written into their <iframe> elements as srcdoc.
  */
-async function buildFrame(capture: FrameCapture, ctx: BuildContext): Promise<Document> {
+export async function buildFrame(capture: FrameCapture, ctx: BuildContext): Promise<Document> {
   const { snap } = capture;
   for (const w of snap.warnings ?? []) ctx.warn(capture.depth ? `frame ${capture.url}: ${w}` : w);
   const doc = parseDocument(snap.html);
@@ -164,9 +164,10 @@ async function buildFrame(capture: FrameCapture, ctx: BuildContext): Promise<Doc
   ctx.built.fontFacesDropped += fonts?.dropped ?? 0;
 
   for (const el of allElements(doc)) {
-    if (el.tagName !== "iframe" && el.tagName !== "frame") continue;
+    // <object> and <embed> documents are frames too, and are marked; only iframes become srcdoc
     const id = getAttr(el, FRAME_ATTRIBUTE);
-    removeAttr(el, FRAME_ATTRIBUTE);
+    if (id !== null) removeAttr(el, FRAME_ATTRIBUTE);
+    if (el.tagName !== "iframe" && el.tagName !== "frame") continue;
     const child = id ? capture.children.get(id) : undefined;
     if (child && el.tagName === "iframe") {
       const inner = await buildFrame(child, ctx);
@@ -179,8 +180,8 @@ async function buildFrame(capture: FrameCapture, ctx: BuildContext): Promise<Doc
     }
     const src = getAttr(el, "src");
     if (src !== null && src.trim() && !/^about:/i.test(src.trim())) {
-      // a child that is too deep or failed already has its warning
-      if (child === undefined) ctx.warn(`${el.tagName} ${src}: ${el.tagName === "frame" ? "<frame> is not supported" : "not loaded by the page"}; left empty`);
+      // a child that is too deep or failed (null) already has its warning; a captured <frame> does not
+      if (child !== null) ctx.warn(`${el.tagName} ${src}: ${el.tagName === "frame" ? "<frame> is not supported" : "not loaded by the page"}; left empty`);
       removeAttr(el, "src");
     }
   }

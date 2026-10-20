@@ -88,3 +88,11 @@ describe("inlineCss with a font filter", () => {
     expect(ctx.fonts!.dropped).toBe(1);
   });
 });
+
+describe("a face still loading", () => {
+  it("is kept: a frame snapshotted before its fonts were ready still needs it", () => {
+    const filter = createFontFilter([face({ family: "Late", status: "loading" })])!;
+    expect(filter.decide(rule(`@font-face { font-family: Late; src: url(l.woff2); }`))).toBe("keep");
+    expect(filter.dropped).toBe(0);
+  });
+});

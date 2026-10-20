@@ -61,8 +61,9 @@ export function snapshot(opts: SnapshotOptions = {}): Snapshot {
   const w: Walk = { inert, manifest: new Set(), warnings: [], pictures: [], after: [] };
 
   freezeTree(live, clone, w);
-  const head = clone.querySelector("head") ?? clone;
-  for (const style of adoptedStyles(document, inert)) head.append(style);
+  // adopted sheets come after every sheet of the document in the cascade, <body> ones included
+  const end = clone.querySelector("body") ?? clone.querySelector("head") ?? clone;
+  for (const style of adoptedStyles(document, inert)) end.append(style);
   for (const job of w.after) job();
   for (const p of w.pictures) collapsePicture(p);
 
@@ -127,6 +128,7 @@ function freezeTree(liveRoot: Node, cloneRoot: Node, w: Walk): void {
         const result = readCanvas(le as HTMLCanvasElement);
         if (result.kind === "image") w.after.push(() => canvasToImage(ce, result.dataUrl));
         else if (result.kind === "tainted") w.warnings.push(`canvas ${describe(le)} is tainted by a cross-origin image and cannot be read; it is empty in the archive`);
+        else if (result.kind === "cleared") w.warnings.push(`canvas ${describe(le)} is a WebGL canvas that reads back cleared (no preserveDrawingBuffer); it is empty in the archive`);
         break;
       }
       case "input":

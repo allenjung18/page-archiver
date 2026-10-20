@@ -13,6 +13,8 @@
   <info-card><span slot="title">A card from a shadow root</span>Its styles are adopted by the shadow root.</info-card>
   <info-card><span slot="title">A second card</span>Same constructed sheet, shared.</info-card>
 </main>
+<!-- a sheet late in <body>: the adopted sheets still win over it, as they come after every sheet -->
+<style>h1 { color: #b00020; } main { padding: 4px; }</style>
 <script>
   const ASSETS = "{{ASSETS}}";
   const page = new CSSStyleSheet();
