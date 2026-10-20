@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pictures from other files</title>
+<!-- Resources an <object>, an <embed> and an SVG <use> load from another file. What is an image
+     is kept (the <object> and <embed> become an <img>, the sprite's symbols are copied into the
+     page); the rest is set aside (D-516). The archive asks nothing of the network, even opened
+     from disk with no CSP to refuse it. -->
+<link rel="stylesheet" href="{{ASSETS}}/css/article.css">
+<style>
+  /* article.css makes every <img> a block; the <object> and <embed> that become <img>s are styled
+     the same here, as a page that shows them as figures would (an <img> takes the page's img rules) */
+  object, embed { display: block; }
+  .icons svg { width: 48px; height: 48px; margin-right: 12px; }
+  /* hidden: live, a headless browser draws "Couldn't load plugin" in it, the archive its empty
+     fallback; what this fixture proves of it is that it asks the network for nothing */
+  .report { width: 320px; height: 48px; visibility: hidden; }
+</style>
+</head>
+<body>
+<main>
+  <article>
+    <h1>Pictures from other files</h1>
+    <p class="byline">By A. Fixture &middot; 20 October 2026</p>
+    <object data="{{ASSETS}}/img/figure.png" type="image/png" width="320" height="180">An orange gradient</object>
+    <p>An older page puts its pictures in an <code>&lt;object&gt;</code> or an <code>&lt;embed&gt;</code>, and its icons in a sprite file that every page shares.</p>
+    <embed src="{{ASSETS}}/img/badge.svg" type="image/svg+xml" width="160" height="48">
+    <p class="icons">
+      <svg viewBox="0 0 24 24"><use href="/sprites/icons.svg#star"></use></svg>
+      <svg viewBox="0 0 24 24"><use xlink:href="/sprites/icons.svg#star"></use></svg>
+      <svg viewBox="0 0 24 24"><use href="/sprites/icons.svg#ring"></use></svg>
+      <svg viewBox="0 0 24 24"><use href="/sprites/gone.svg#star"></use></svg>
+    </p>
+    <object class="report" data="{{ASSETS}}/doc/report.pdf" type="application/pdf"></object>
+    <p>A document in an <code>&lt;object&gt;</code> is not a picture, so it is set aside: the archive says where it was without asking for it again.</p>
+  </article>
+</main>
+</body>
+</html>

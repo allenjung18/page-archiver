@@ -167,6 +167,34 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html, "no @import rule left to fetch").not.toMatch(/@import\s+(url\(|["'])/);
     },
   },
+  "external-refs": {
+    // the PDF is declared as one, so it is set aside without being fetched; the sprite that is
+    // not there answers HTTP 404
+    warnings: [
+      /^object http:\/\/127\.0\.0\.1:\d+\/doc\/report\.pdf: application\/pdf is not an image; set aside$/,
+      /\/sprites\/gone\.svg: HTTP 404; set aside$/,
+    ],
+    withoutCsp: true,
+    check(html) {
+      expect(html, "no <object> or <embed> keeps an address").not.toMatch(/<(object|embed)\b[^>]*\s(data|src)=/);
+      // the image in the <object> and the SVG in the <embed> are <img>s of themselves
+      expect(html).toMatch(/<img width="320" height="180" src="data:image\/png;base64,/);
+      expect(html).toMatch(/<img width="160" height="48" src="data:image\/svg\+xml;charset=utf-8;base64,/);
+      // its type goes too: with a type alone, Chromium starts the PDF viewer (an object-src violation)
+      expect(html).toMatch(
+        /<object class="report" data-page-archiver-unfetched-data="http:\/\/127\.0\.0\.1:\d+\/doc\/report\.pdf" data-page-archiver-unfetched-type="application\/pdf">/,
+      );
+      // the sprite's symbols, and the gradient and symbol they use, are copied in once each
+      expect(count(html, 'id="page-archiver-sprite-0-star"')).toBe(1);
+      expect(count(html, 'id="page-archiver-sprite-0-ring"')).toBe(1);
+      expect(count(html, 'id="page-archiver-sprite-0-gold"')).toBe(1);
+      expect(html).not.toContain("unused");
+      expect(count(html, 'href="#page-archiver-sprite-0-star"'), "two <use>s, one of them xlink:href").toBe(2);
+      expect(count(html, 'href="#page-archiver-sprite-0-ring"'), "the page's <use> and the star's").toBe(2);
+      expect(html).toMatch(/<use data-page-archiver-unfetched-href="http:\/\/127\.0\.0\.1:\d+\/sprites\/gone\.svg#star">/);
+      expect(html, "no <use> names another file").not.toMatch(/<use\b[^>]*\shref="[^#]/);
+    },
+  },
   "form-state": {
     check(html) {
       expect(html).toMatch(/<input id="name" type="text" value="Ada Lovelace">/);

@@ -83,6 +83,13 @@ describe("fixture server", () => {
     expect(data.items.length).toBeGreaterThan(0);
   });
 
+  it("serves an SVG sprite from the pages origin, as SVG", async () => {
+    const res = await fetch(`${server.pagesOrigin}/sprites/icons.svg`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/svg+xml");
+    expect(await res.text()).toContain('<symbol id="star"');
+  });
+
   it("does not serve pages from the assets port or assets from the pages port", async () => {
     expect((await fetch(`${server.assetsOrigin}/plain-article.html`)).status).toBe(404);
     expect((await fetch(`${server.pagesOrigin}/img/hero.png`)).status).toBe(404);

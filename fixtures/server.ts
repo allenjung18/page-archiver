@@ -86,6 +86,12 @@ function pagesHandler(assetsOrigin: () => string) {
       return;
     }
     const file = resolveInside(pagesDir, path);
+    if (file && extname(file) === ".svg") {
+      // an SVG <use> takes its element from a same-origin file only: icon sprites are served here
+      res.writeHead(200, { "content-type": MIME[".svg"], "cache-control": "no-store" });
+      createReadStream(file).pipe(res);
+      return;
+    }
     if (!file || extname(file) !== ".html") return notFound(res);
     const html = readFileSync(file, "utf8").replaceAll("{{ASSETS}}", assetsOrigin());
     res.writeHead(200, { "content-type": MIME[".html"], "cache-control": "no-store" });
