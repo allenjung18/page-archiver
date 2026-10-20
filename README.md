@@ -13,7 +13,8 @@ CSS-in-JS and adopted stylesheets, shadow DOM, canvas, form state, iframes and c
 and `pa save <url> -d <dir>` adds a reader copy, an MHTML copy, a full-page PNG and PDF, and
 `meta.json`. `pa save <url>` saves into the library (a folder with a full-text index), which
 `pa list`, `pa search`, `pa tag`, `pa open`, `pa reindex` and `pa import` work on, and
-`pa serve` opens in the browser to read it. The extension is not built yet.
+`pa serve` opens in the browser to read it. The Chrome extension saves the tab you are
+reading, signed in as you are, into the library through `pa serve`.
 
 ## Saving a page
 
@@ -148,10 +149,32 @@ tests check both.
 
 The API (JSON) under `/api`: `GET pages`, `GET search?q=`, `GET facets`, `GET pages/<id>`
 take the list filters as query parameters (`site`, `tag`, `since`, `until`, `all=1`,
-`limit`). The writes, `POST save` (`{"url", "tags"}`), `POST pages/<id>/recapture`,
+`limit`). The writes, `POST save` (`{"url", "tags"}` captures the URL;
+`{"url", "html", "tags"}` adds an archive made elsewhere, the extension's, sanitized again,
+and answers 409 when those bytes are in the library already), `POST pages/<id>/recapture`,
 `POST pages/<id>/tags` (`{"add", "remove"}`) and `DELETE pages/<id>`, need
 `Authorization: Bearer <token>`; the reader UI is handed the token in its page. Requests
 that name any host other than `127.0.0.1:<port>` or `localhost:<port>` are refused.
+
+## Saving from Chrome
+
+`npm run build` writes the extension to `packages/extension/dist/unpacked`. Load it once in
+Chrome: `chrome://extensions`, turn on **Developer mode**, **Load unpacked**, choose that
+folder.
+
+With `pa serve` running, click the extension's button on any http(s) page, add tags if you
+like and press **Save**, or right-click the page and choose **Save page to archive**. The
+extension serializes the page as your browser has it (signed in, past a paywall you pay for,
+after you have scrolled or opened what you wanted) in every frame, fetches its styles, images
+and fonts from the extension's service worker with your cookies, builds the same
+self-contained archive `pa save` does, and posts it to the server, which sanitizes it again and
+adds it to the library. The popup then says **Saved** and **Open in library** opens the reader.
+The first save pairs with the server by reading the write token from its page; the server
+address is a setting in the popup (default `http://127.0.0.1:47320/`).
+
+When the server is not running, the extension downloads the archive instead, as
+`page-archiver/<site-title>-<time>.html` in the download folder; `pa import` adds it to the
+library later. The extension never sends a page anywhere but the server address you set.
 
 ## Layout
 
