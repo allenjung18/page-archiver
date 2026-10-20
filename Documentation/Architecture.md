@@ -119,6 +119,8 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   cannot be had is set aside and reported.
 - **Set aside** (D-516): a resource the capture cannot have (an HTTP error, a cap) never stays a
   live reference, so no archive asks the network for anything, even opened from disk with no CSP.
+  That holds for `<object>`, `<embed>` and SVG `<use>` too (below): each one's file is inlined or
+  set aside, never left as a URL.
   An attribute moves to `UNFETCHED_ATTRIBUTE_PREFIX` + its name (`data-page-archiver-unfetched-src`)
   with its absolute URL; a `url()` becomes `UNFETCHED_URL` (`url("data:,")`, which fails to load
   as the fetch did) followed by a `/* page-archiver unfetched: <url> */` comment (`unfetchedNote`),

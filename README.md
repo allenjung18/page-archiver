@@ -275,9 +275,9 @@ table of results, sizes,
 live-versus-offline pixel differences and warnings. It is never part of `npm test` or
 `npm run test:e2e`.
 
-The committed list is ten public pages of different shapes, two of them recorded misses (a
-site answering some of its own images with HTTP errors); replace it with the pages you save. A
-page known not to save gets `| miss: <reason>` on its line instead of a workaround.
+The committed list is ten public pages of different shapes, none of them a recorded miss (an
+HTTP error on a page's own resource is set aside, so it no longer fails a page); replace it with
+the pages you save. A page known not to save gets `| miss: <reason>` on its line instead of a workaround.
 Every bug the smoke run found is reproduced by a fixture, listed in
 [Documentation/Review.md](Documentation/Review.md); [Documentation/Testing.md](Documentation/Testing.md)
 has the details.
