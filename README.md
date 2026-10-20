@@ -16,17 +16,30 @@ and `pa save <url> -d <dir>` adds a reader copy, an MHTML copy, a full-page PNG 
 `pa serve` opens in the browser to read it. The Chrome extension saves the tab you are
 reading, signed in as you are, into the library through `pa serve`.
 
+## Install
+
+Node 22.18 or newer, then from this folder:
+
+```
+npm ci
+npx playwright install chromium   # the browser pa captures with (once)
+npm run build
+npm link -w @page-archiver/cli    # puts `pa` on your PATH
+```
+
+Without the link, `node packages/cli/dist/index.js` is `pa`. `npm unlink -g @page-archiver/cli`
+takes it off again.
+
 ## Saving a page
 
 ```
-npm run build
-node packages/cli/dist/index.js save https://example.com/article -o article.html
+pa save https://example.com/article -o article.html
 ```
 
 Or into a folder, with everything a capture makes:
 
 ```
-node packages/cli/dist/index.js save https://example.com/article -d article/ --tag reading
+pa save https://example.com/article -d article/ --tag reading
 ```
 
 | File | What it is |
@@ -56,6 +69,12 @@ URL) and image as `data:` URIs, removes every script, event handler, `javascript
 stamps the file with `page-archiver:*` metas (source URL, capture time, tool version, and
 a sha256 of the file). A resource that cannot be had is kept as an absolute link and
 reported as a warning.
+
+Video and audio files are not archived: they are often hundreds of megabytes, streamed in
+pieces, or both. Each `<video>` keeps a still of the frame it was showing as its poster (or the
+page's own poster), at its own aspect ratio, and every media element keeps its source URL in
+`data-page-archiver-src`, so the archive shows where the video was without trying to load it.
+A save from the Chrome extension keeps the page's own poster only.
 
 What the serializer freezes from the live page, not the HTML source:
 
@@ -188,11 +207,12 @@ packages/
   extension/    Chrome MV3 extension
 fixtures/       test pages (one port) and their assets (a second port, cross origin)
 test/e2e/       Playwright: capture a fixture, open it offline, compare
+test/oracle/    the same fixtures through SingleFile, for comparison
+test/smoke/     real pages from test/smoke-urls.txt, captured and opened offline
+Documentation/  Architecture.md (how a capture works), Testing.md, Review.md
 ```
 
 ## Commands
-
-Node 22.18 or newer.
 
 ```
 npm ci
@@ -202,6 +222,8 @@ npm test                          # unit tests (vitest)
 npm run build                     # tsc for every package, the serializer IIFE, the reader UI (Vite), then a type check of tests and fixtures
 npm run test:e2e                  # build, then Playwright (starts the fixture server itself)
 npm run fixtures                  # fixture server by hand: pages on :47310, assets on :47311
+npm run oracle                    # every fixture through page-archiver and SingleFile, compared
+npm run smoke                     # the real pages in test/smoke-urls.txt (uses the network)
 ```
 
 Set `PAGES_PORT` / `ASSETS_PORT` to move the fixture server.
@@ -211,7 +233,7 @@ Set `PAGES_PORT` / `ASSETS_PORT` to move the fixture server.
 `test/e2e/offline.spec.ts` captures each fixture page in `fixtures/pages/` (one per hard
 case: CSS-in-JS, adopted sheets, `srcset`, lazy images, web fonts, `@import`, shadow DOM,
 canvas, same- and cross-origin iframes, a sticky cookie wall, a client-rendered SPA, form
-state), then opens the archive in a fresh
+state, video and audio, fetch hints and touch icons), then opens the archive in a fresh
 browser context that is offline, with a route that aborts every request except the
 document, served under a CSP that allows only inline styles and `data:` URIs. It asserts
 zero blocked requests, zero CSP violations, and a full-page screenshot within 1% of the
@@ -219,7 +241,7 @@ live page. `test/e2e/extras.spec.ts` saves two articles with `-d`, validates `me
 against its schema, opens the reader copy under the same offline CSP, parses the MHTML
 file's MIME parts and opens it in Chromium offline. `test/e2e/offline-harness.spec.ts` proves the harness sees a request, a
 violation and a script when an archive has one. `test/e2e/library.spec.ts` builds a library of
-20 fixture pages in the test's output folder (every page in `fixtures/pages/` saved with
+every fixture page in the test's output folder (every page in `fixtures/pages/` saved with
 `pa save`, plus the SingleFile-style saves in `fixtures/import/` brought in with `pa
 import`), searches it for words that appear in one article only, deletes `library.db`,
 reindexes and checks the same searches return the same results, and saves a page twice to
@@ -232,3 +254,20 @@ check version 1 is kept beside version 2.
 run through `npx` as a separate program and never linked or bundled), puts both through the
 same offline assertion, and writes a pass/size table to `test-results/oracle.md`. It is a
 comparison, not a gate: the run fails only when page-archiver fails.
+
+## The real-site smoke run
+
+Fixtures prove the hard cases one at a time; real pages combine them with ads, consent
+managers and a few hundred requests. `npm run smoke` captures every page listed in
+`test/smoke-urls.txt` from the live web and opens each archive offline: it fails a page on any
+request or CSP violation the archive makes (one the capture already reported, a resource the
+site refused, is counted but excused) or when the page's expected text is missing, which tells
+a saved article from a bot wall. `test-results/smoke.md` gets a table of results, sizes,
+live-versus-offline pixel differences and warnings. It is never part of `npm test` or
+`npm run test:e2e`.
+
+The committed list is ten public pages of different shapes; replace it with the pages you
+save. A page known not to save gets `| miss: <reason>` on its line instead of a workaround.
+Every bug the smoke run found is reproduced by a fixture, listed in
+[Documentation/Review.md](Documentation/Review.md); [Documentation/Testing.md](Documentation/Testing.md)
+has the details.
