@@ -33,6 +33,11 @@ import { effectiveMime, normalizeMime, toDataUri } from "./datauri.ts";
 export interface HtmlContext extends CssContext {
   /** What relative URLs in the document resolve against (the snapshot's document.baseURI). */
   baseUrl: string;
+  /**
+   * The document's own URL (the snapshot's location.href), which a url() is compared with to tell
+   * the document's own element from another file's, whatever <base> says; baseUrl when absent.
+   */
+  pageUrl?: string | undefined;
 }
 
 /** Absolute http(s) URL for an attribute value, or null when it is not one to fetch. */
@@ -461,7 +466,7 @@ async function inlineSvgRef(el: Element, name: string, value: string, ctx: HtmlC
 
 /** Inlines every resource doc references and makes its links absolute, in place. */
 export async function inlineDocument(doc: Document, ctx: HtmlContext): Promise<void> {
-  const page = new URL(ctx.baseUrl);
+  const page = new URL(ctx.pageUrl ?? ctx.baseUrl, ctx.baseUrl);
   page.hash = "";
   await inlineElements(allElements(doc), ctx, { page: page.href, sheets: new Map(), scopes: new Map() });
 }

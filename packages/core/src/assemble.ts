@@ -34,7 +34,7 @@ export async function buildFrame(capture: FrameCapture, ctx: BuildContext): Prom
   ctx.built.removed.elements += removed.elements;
   ctx.built.removed.attributes += removed.attributes;
   const fonts = createFontFilter(snap.fonts);
-  await inlineDocument(doc, { baseUrl: snap.baseUrl, get: (u) => ctx.resolver.get(u), warn: ctx.warn, fonts, fetched: ctx.fetched });
+  await inlineDocument(doc, { baseUrl: snap.baseUrl, pageUrl: snap.url, get: (u) => ctx.resolver.get(u), warn: ctx.warn, fonts, fetched: ctx.fetched });
   ctx.built.fontFacesDropped += fonts?.dropped ?? 0;
 
   for (const el of allElements(doc)) {

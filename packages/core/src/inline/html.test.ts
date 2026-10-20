@@ -42,9 +42,10 @@ function ctxFor(files: Files, baseUrl = "http://site.test/blog/post.html") {
   return { ctx, warnings, requested };
 }
 
-async function run(html: string, files: Files, baseUrl?: string) {
+async function run(html: string, files: Files, baseUrl?: string, pageUrl?: string) {
   const doc = parseDocument(html);
   const { ctx, warnings, requested } = ctxFor(files, baseUrl);
+  if (pageUrl) ctx.pageUrl = pageUrl;
   await inlineDocument(doc, ctx);
   return { doc, out: serializeDocument(doc), warnings, requested };
 }
@@ -439,6 +440,19 @@ describe("inlineDocument: SVG url() attributes that name another file", () => {
     const { doc, requested } = await run(`<svg><rect id="r" fill="url(http://site.test/blog/post.html#grad) red"/></svg>`, files);
     expect(getAttr(byId(doc, "r"), "fill")).toBe("url(#grad) red");
     expect(requested).toEqual([]);
+  });
+
+  it("knows the page by its own URL, not its <base>, as Chromium does", async () => {
+    const { doc, requested, warnings } = await run(
+      `<svg><rect id="r" fill="url(http://site.test/app/page#grad) red" filter="url(/app/page#soft)"/></svg>`,
+      files,
+      "http://site.test/",
+      "http://site.test/app/page#top",
+    );
+    expect(getAttr(byId(doc, "r"), "fill")).toBe("url(#grad) red");
+    expect(getAttr(byId(doc, "r"), "filter")).toBe("url(#soft)");
+    expect(requested).toEqual([]);
+    expect(warnings).toEqual([]);
   });
 
   it("sets aside a reference that cannot be had, with a warning, as the failed reference would render", async () => {

@@ -145,8 +145,8 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
 - **SVG `url()` attributes that name another file** (`inlineSvgRef`, `SVG_REF_ATTRIBUTES`): a
   `filter`, `mask`, `clip-path`, `marker-start`/`-mid`/`-end`, `fill` or `stroke` of an SVG element
   whose `url()` names an element in another file (`url(fx.svg#blur)`) has that element copied in
-  as a `<use>`'s is, and the `url()` points at the copy. A `url()` naming the page itself points
-  at the page's own element (`url(#id)`). One that cannot be had is set aside with a warning: its
+  as a `<use>`'s is, and the `url()` points at the copy. A `url()` naming the page itself (by its
+  own URL, `pageUrl`, not its `<base>`) points at the page's own element (`url(#id)`). One that cannot be had is set aside with a warning: its
   URL in `data-page-archiver-unfetched-<name>`, the attribute left as the failed reference renders
   (a `fill` or `stroke` keeps its fallback colour, else `none`).
 - Icons: a `<link>` whose `rel` is one of `ICON_RELS` (`icon`, `apple-touch-icon`,
