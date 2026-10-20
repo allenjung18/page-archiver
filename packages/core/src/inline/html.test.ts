@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { allElements, getAttr, parseDocument, serializeDocument } from "../dom.ts";
 import type { Resource } from "../resources.ts";
-import { absoluteLink, inlineDocument, MEDIA_SRC_ATTRIBUTE, POSTER_FRAME_ATTRIBUTE, VIDEO_RATIO_ATTRIBUTE, type HtmlContext } from "./html.ts";
+import { absoluteLink, inlineDocument, MEDIA_SRC_ATTRIBUTE, POSTER_FRAME_ATTRIBUTE, UNFETCHED_ATTRIBUTE_PREFIX, VIDEO_RATIO_ATTRIBUTE, type HtmlContext } from "./html.ts";
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const PNG_URI = `data:image/png;base64,${PNG.toString("base64")}`;
@@ -39,9 +39,29 @@ describe("inlineDocument", () => {
     expect(out).toContain(`<style media="screen">body{background:url("${PNG_URI}")}</style>`);
   });
 
-  it("keeps a stylesheet it cannot fetch as a link with an absolute href", async () => {
+  it("sets a stylesheet it cannot fetch aside: no href, the absolute URL kept beside it", async () => {
     const { out } = await run(`<link rel="stylesheet" href="/gone.css">`, {});
-    expect(out).toContain(`<link rel="stylesheet" href="http://site.test/gone.css">`);
+    expect(out).toContain(`<link rel="stylesheet" ${UNFETCHED_ATTRIBUTE_PREFIX}href="http://site.test/gone.css">`);
+  });
+
+  it("sets every resource attribute it cannot fetch aside, so nothing in the file names the network", async () => {
+    const { doc, out } = await run(
+      `<img id="i" src="gone.png" alt="a"><input id="n" type="image" src="/gone-button.png">` +
+        `<table id="t" background="/gone-bg.png"></table>` +
+        `<svg><image id="s" href="/gone.svg"></image><filter><feImage id="f" href="/gone-fe.png"></feImage></filter></svg>` +
+        `<div id="d" style="background: url(/gone-style.png) no-repeat"></div>`,
+      {},
+    );
+    expect(getAttr(byId(doc, "i"), "src")).toBeNull();
+    expect(getAttr(byId(doc, "i"), `${UNFETCHED_ATTRIBUTE_PREFIX}src`)).toBe("http://site.test/blog/gone.png");
+    expect(getAttr(byId(doc, "n"), `${UNFETCHED_ATTRIBUTE_PREFIX}src`)).toBe("http://site.test/gone-button.png");
+    expect(getAttr(byId(doc, "t"), `${UNFETCHED_ATTRIBUTE_PREFIX}background`)).toBe("http://site.test/gone-bg.png");
+    expect(getAttr(byId(doc, "s"), `${UNFETCHED_ATTRIBUTE_PREFIX}href`)).toBe("http://site.test/gone.svg");
+    expect(getAttr(byId(doc, "f"), `${UNFETCHED_ATTRIBUTE_PREFIX}href`)).toBe("http://site.test/gone-fe.png");
+    expect(getAttr(byId(doc, "d"), "style")).toBe(`background: url("data:,") /* page-archiver unfetched: http://site.test/gone-style.png */ no-repeat`);
+    // the only http(s) URLs left are in the set-aside attributes and comments
+    const live = out.replace(new RegExp(`${UNFETCHED_ATTRIBUTE_PREFIX}[a-z]+="[^"]*"`, "g"), "").replace(/\/\*[^]*?\*\//g, "");
+    expect(live).not.toMatch(/https?:/);
   });
 
   it("drops an alternate stylesheet with a warning", async () => {
@@ -67,9 +87,10 @@ describe("inlineDocument", () => {
     expect(img.attrs.map((a) => a.name).sort()).toEqual(["alt", "id", "src"]);
   });
 
-  it("keeps an image it cannot fetch with an absolute src", async () => {
+  it("sets an image it cannot fetch aside, its src absolute", async () => {
     const { doc } = await run(`<img id="i" src="gone.png">`, {});
-    expect(getAttr(byId(doc, "i"), "src")).toBe("http://site.test/blog/gone.png");
+    expect(getAttr(byId(doc, "i"), "src")).toBeNull();
+    expect(getAttr(byId(doc, "i"), `${UNFETCHED_ATTRIBUTE_PREFIX}src`)).toBe("http://site.test/blog/gone.png");
   });
 
   it("inlines video posters, input images, SVG image hrefs and favicons; drops a favicon it cannot fetch", async () => {
@@ -116,9 +137,10 @@ describe("inlineDocument", () => {
       "video http://site.test/clip.mp4: media not archived; it has no poster frame",
       "video https://cdn.test/a.webm: media not archived; the poster frame is kept",
       "audio blob:http://site.test/0b1c: media not archived; nothing of it is kept",
-      // the poster could not be had: kept as a link, like any image
+      // the poster could not be had: set aside, like any image
     ]);
-    expect(getAttr(byId(doc, "w"), "poster")).toBe("http://site.test/missing-poster.png");
+    expect(getAttr(byId(doc, "w"), "poster")).toBeNull();
+    expect(getAttr(byId(doc, "w"), `${UNFETCHED_ATTRIBUTE_PREFIX}poster`)).toBe("http://site.test/missing-poster.png");
   });
 
   it("makes a video's captured frame its poster, over the page's own poster, and only a data: image", async () => {

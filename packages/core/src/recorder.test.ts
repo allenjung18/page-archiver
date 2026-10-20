@@ -153,7 +153,7 @@ describe("resolver", () => {
     expect(await res.get("http://a.test/down.png")).toBeNull();
     expect(fetched).toEqual(["http://a.test/miss.png", "http://a.test/down.png"]); // never re-fetches a 404
     expect(res.warnings).toHaveLength(2);
-    expect(res.warnings.join("\n")).toMatch(/404\.png: HTTP 404; kept as a link/);
+    expect(res.warnings.join("\n")).toMatch(/404\.png: HTTP 404; set aside/);
     expect(res.warnings.join("\n")).toMatch(/down\.png: fetch failed \(ECONNREFUSED\)/);
   });
 

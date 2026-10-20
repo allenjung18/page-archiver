@@ -41,10 +41,18 @@ export function resolveCssUrl(raw: string, base: string): string | null {
   }
 }
 
+/** What a url() the capture could not have becomes: an empty data: URI, which fails as the fetch did and asks nothing of the network. */
+export const UNFETCHED_URL = 'url("data:,")';
+
+/** The text of a CSS comment saying where an unfetched resource was (a "*" + "/" in the URL cannot end the comment). */
+export function unfetchedNote(what: string, url: string): string {
+  return ` page-archiver unfetched${what ? ` ${what}` : ""}: ${url.replace(/\*\//g, "*%2F")} `;
+}
+
 /**
  * Replaces every url() in a piece of CSS text (a declaration value, a style attribute) with a
- * data: URI of the resource it names. A resource that cannot be had keeps its URL, made
- * absolute, so the archive still says where it was.
+ * data: URI of the resource it names. A resource that cannot be had becomes UNFETCHED_URL,
+ * followed by a comment with its absolute URL, so the archive still says where it was.
  */
 export async function inlineUrls(text: string, base: string, ctx: CssContext): Promise<string> {
   if (!/url\(/i.test(text)) return text;
@@ -55,7 +63,7 @@ export async function inlineUrls(text: string, base: string, ctx: CssContext): P
       const url = resolveCssUrl(raw, base);
       if (!url) return m[0];
       const res = await ctx.get(url);
-      return `url("${res ? toDataUri(res.bytes, res.mime) : url.replace(/["\\\n]/g, (c) => `\\${c === "\n" ? "a " : c}`)}")`;
+      return res ? `url("${toDataUri(res.bytes, res.mime)}")` : `${UNFETCHED_URL} /*${unfetchedNote("", url)}*/`;
     }),
   );
   let out = "";
@@ -187,8 +195,8 @@ export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, 
     }
     const res = await ctx.get(url);
     if (!res) {
-      // keep it pointing at the network, absolute: the archive's CSP refuses it, the record survives
-      at.params = `url("${url}")${p.layer !== null ? ` layer${p.layer ? `(${p.layer})` : ""}` : ""}${p.supports !== null ? ` supports(${p.supports})` : ""}${p.media ? ` ${p.media}` : ""}`;
+      // the sheet fails to load either way; a comment keeps the record and asks nothing of the network
+      at.replaceWith(postcss.comment({ text: unfetchedNote("@import", url).trim() }));
       continue;
     }
     const inner = await inlineCss(decode(res.bytes), url, ctx, chain);

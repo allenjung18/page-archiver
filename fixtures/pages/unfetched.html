@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resources the site will not give</title>
+<!-- Every reference below answers HTTP 404 from the assets origin. The capture cannot have any of
+     them, so each is set aside (D-516): the archive must ask nothing of the network even when it
+     is opened from disk with no CSP to refuse the requests. -->
+<link rel="stylesheet" href="{{ASSETS}}/css/gone.css">
+<link rel="stylesheet" href="{{ASSETS}}/css/article.css">
+<style>
+  @import url("{{ASSETS}}/css/gone-import.css");
+  .banner { height: 60px; background: #e8e0d0 url("{{ASSETS}}/img/gone-banner.png") no-repeat; }
+</style>
+</head>
+<body>
+<main>
+  <article>
+    <div class="banner"></div>
+    <h1>Resources the site will not give</h1>
+    <p class="byline">By A. Fixture &middot; 20 October 2026</p>
+    <img src="{{ASSETS}}/img/hero.png" width="640" height="240" alt="A blue gradient that does load">
+    <p>An archive keeps what the page showed. A tracking pixel that answered an error, a stylesheet a CDN no longer serves, an avatar that was deleted: none of these can be put into the file.</p>
+    <img src="{{ASSETS}}/img/gone-pixel.gif" width="1" height="1">
+    <div style="height: 40px; background: #d0dce8 url('{{ASSETS}}/img/gone-inline.png')"></div>
+    <svg width="120" height="40" viewBox="0 0 120 40"><rect width="120" height="40" fill="#c8d8c0"></rect><image href="{{ASSETS}}/img/gone.svg" width="120" height="40"></image></svg>
+    <p>Each of them is set aside, so the file names where it was without asking for it again.</p>
+  </article>
+</main>
+</body>
+</html>

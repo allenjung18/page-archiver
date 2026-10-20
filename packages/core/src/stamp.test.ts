@@ -30,7 +30,7 @@ describe("serializeDocument", () => {
 describe("stamp", () => {
   it("writes the summarized warnings as JSON, read back by readStamp, covered by the hash", () => {
     const doc = parseDocument(`<!doctype html><title>t</title>`);
-    const warnings = [`2 resources could not be loaded, kept as links`, `canvas "c" & co`];
+    const warnings = [`2 resources could not be loaded, set aside`, `canvas "c" & co`];
     stamp(doc, { sourceUrl: "http://s.test/", capturedAt: AT, toolVersion: "1", warnings });
     const { html } = finalizeStamp(serializeDocument(doc));
     expect(JSON.parse(readStamp(html)["warnings"]!)).toEqual(warnings);

@@ -1,6 +1,7 @@
 // The frozen document made self-contained: stylesheets become <style> (via inline/css.ts),
-// images and other resource attributes become data: URIs, and links are made absolute so they
-// still lead to the live web from the archive.
+// images and other resource attributes become data: URIs, a resource that cannot be had is set
+// aside (UNFETCHED_ATTRIBUTE_PREFIX) so the archive never asks the network for it, and links are
+// made absolute so they still lead to the live web from the archive.
 import {
   allElements,
   createElement,
@@ -46,14 +47,27 @@ export function absoluteLink(value: string, base: string): string {
   }
 }
 
-/** Replaces a URL attribute with a data: URI of the resource, or the absolute URL when it cannot be had. */
+/**
+ * Where an attribute naming a resource the capture could not have keeps its absolute URL
+ * (`data-page-archiver-unfetched-src` for an `img src`): left in place, opening the file from disk
+ * would fetch it from the live site, and served under the archive CSP it is a refused request.
+ */
+export const UNFETCHED_ATTRIBUTE_PREFIX = "data-page-archiver-unfetched-";
+
+/** Moves `name`'s URL into its UNFETCHED_ATTRIBUTE_PREFIX attribute. */
+function setUnfetchedAside(el: Element, name: string, url: string): void {
+  removeAttr(el, name);
+  setAttr(el, UNFETCHED_ATTRIBUTE_PREFIX + name, url);
+}
+
+/** Replaces a URL attribute with a data: URI of the resource, or sets it aside when it cannot be had. */
 async function inlineAttr(el: Element, name: string, ctx: HtmlContext, dropOnFailure = false): Promise<void> {
   const url = fetchable(getAttr(el, name), ctx.baseUrl);
   if (!url) return;
   const res = await ctx.get(url);
   if (res) setAttr(el, name, toDataUri(res.bytes, res.mime));
   else if (dropOnFailure) detach(el);
-  else setAttr(el, name, url);
+  else setUnfetchedAside(el, name, url);
 }
 
 async function inlineStylesheetLink(link: Element, ctx: HtmlContext): Promise<void> {
@@ -67,7 +81,7 @@ async function inlineStylesheetLink(link: Element, ctx: HtmlContext): Promise<vo
   }
   const res = await ctx.get(href);
   if (!res) {
-    setAttr(link, "href", href);
+    setUnfetchedAside(link, "href", href);
     return;
   }
   const style = createElement("style");

@@ -31,11 +31,16 @@ export const LIVE_DISMISS: Readonly<Record<string, string>> = {
   "cookie-wall": "#onetrust-reject-all-handler",
 };
 
+/** Fixtures with images built not to load (the site answers an error): their `src`s, as written. */
+export const LIVE_BROKEN: Readonly<Record<string, RegExp[]>> = {
+  unfetched: [/\/img\/gone-pixel\.gif$/],
+};
+
 /**
- * Opens a fixture live, settles it, checks every image loaded, and returns a full-page PNG.
- * `dismiss` is clicked first, the way a reader closes a consent wall before reading.
+ * Opens a fixture live, settles it, checks every image loaded but the `broken` ones, and returns
+ * a full-page PNG. `dismiss` is clicked first, the way a reader closes a consent wall before reading.
  */
-export async function screenshotLive(browser: Browser, url: string, opts: { dismiss?: string } = {}): Promise<Buffer> {
+export async function screenshotLive(browser: Browser, url: string, opts: { dismiss?: string; broken?: RegExp[] } = {}): Promise<Buffer> {
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
   try {
     const page = await context.newPage();
@@ -47,7 +52,9 @@ export async function screenshotLive(browser: Browser, url: string, opts: { dism
         .filter((img) => !img.complete || img.naturalWidth === 0)
         .map((img) => img.getAttribute("src") ?? img.getAttribute("data-src") ?? "(no src)"),
     );
-    expect(broken, `images that did not load on the live page ${url}`).toEqual([]);
+    const expected = opts.broken ?? [];
+    expect(broken, `images that did not load on the live page ${url}`).toHaveLength(expected.length);
+    expected.forEach((re, i) => expect(broken[i]).toMatch(re));
     return await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" });
   } finally {
     await context.close();

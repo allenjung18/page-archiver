@@ -41,11 +41,16 @@ describe("inlineUrls", () => {
     expect(out).toBe(`url("${PNG_URI}") url("${PNG_URI}") url("${PNG_URI}")`);
   });
 
-  it("keeps a missing resource as an absolute URL", async () => {
+  it("sets a missing resource aside: an empty data: URI, its absolute URL in a comment", async () => {
     const { ctx } = site({});
     expect(await inlineUrls(`url(gone.png) no-repeat`, "http://s.test/css/", ctx)).toBe(
-      `url("http://s.test/css/gone.png") no-repeat`,
+      `url("data:,") /* page-archiver unfetched: http://s.test/css/gone.png */ no-repeat`,
     );
+  });
+
+  it("cannot end its comment early on a */ in the URL", async () => {
+    const { ctx } = site({});
+    expect(await inlineUrls(`url("a*/b.png")`, "http://s.test/", ctx)).toBe(`url("data:,") /* page-archiver unfetched: http://s.test/a*%2Fb.png */`);
   });
 
   it("leaves fragment and data: urls untouched", async () => {
@@ -91,7 +96,8 @@ describe("inlineCss", () => {
     expect(out).not.toMatch(/@import/);
     expect(out).toContain(`.a{background:url("${PNG_URI}")}`);
     expect(out).toContain(`.b{background:url("${PNG_URI}")}`);
-    expect(out).toMatch(/@media screen\s*\{\s*\.c\{background:url\("http:\/\/cdn\.test\/img\/c\.png"\)\}/);
+    // c.png is not on the site: set aside, its URL resolved against c's own sheet
+    expect(out).toMatch(/@media screen\s*\{\s*\.c\{background:url\("data:,"\) \/\* page-archiver unfetched: http:\/\/cdn\.test\/img\/c\.png \*\/\}/);
     // order is the cascade order: c (via b), b, a, then the page's own rule
     const at = (s: string) => out.indexOf(s);
     expect(at(".c{")).toBeLessThan(at(".b{"));
@@ -126,10 +132,10 @@ describe("inlineCss", () => {
     expect(out).toBe(`@layer base{@supports (display: grid){@media print{.g{display:grid}}}}`);
   });
 
-  it("keeps an import it cannot fetch, absolute, and drops @charset", async () => {
+  it("sets an import it cannot fetch aside as a comment, and drops @charset", async () => {
     const { ctx } = site({});
     const out = await inlineCss(`@charset "utf-8";@import "gone.css" print;.x{y:1}`, "http://s.test/css/", ctx);
-    expect(out).toBe(`@import url("http://s.test/css/gone.css") print;.x{y:1}`);
+    expect(out).toBe(`/* page-archiver unfetched @import: http://s.test/css/gone.css */.x{y:1}`);
   });
 
   it("inlines url()s in @font-face src", async () => {

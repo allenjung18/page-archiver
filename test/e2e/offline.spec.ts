@@ -7,7 +7,7 @@ import { ARCHIVE_FILE, capture, readStamp, verifyStamp, type Archive } from "@pa
 import { fixturePages } from "../../fixtures/server.ts";
 import { diffScreenshots } from "./compare.ts";
 import { fixtureUrl } from "./env.ts";
-import { LIVE_DISMISS, screenshotLive } from "./live.ts";
+import { LIVE_BROKEN, LIVE_DISMISS, screenshotLive } from "./live.ts";
 import { openOffline } from "./offline.ts";
 
 /** At most this fraction of pixels may differ between the live page and its archive. */
@@ -25,6 +25,8 @@ interface Fixture {
   fetched?: number;
   /** What this fixture proves about the archive's HTML, beyond opening offline and looking right. */
   check?: (html: string, archive: Archive) => void;
+  /** Also open the archive without the CSP, as a file opened from disk is: it must still make no request. */
+  withoutCsp?: boolean;
 }
 
 /** Occurrences of `needle` in `hay`. */
@@ -143,6 +145,28 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html).toMatch(/<link rel="apple-touch-icon" sizes="180x180" href="data:image\/png;base64,/);
     },
   },
+  unfetched: {
+    // every one answers HTTP 404, so it is set aside rather than left pointing at the network; the
+    // <style>'s own url() is resolved after its @import, so it comes last
+    warnings: [
+      /\/css\/gone\.css: HTTP 404; set aside$/,
+      /\/css\/gone-import\.css: HTTP 404; set aside$/,
+      /\/img\/gone-pixel\.gif: HTTP 404; set aside$/,
+      /\/img\/gone-inline\.png: HTTP 404; set aside$/,
+      /\/img\/gone\.svg: HTTP 404; set aside$/,
+      /\/img\/gone-banner\.png: HTTP 404; set aside$/,
+    ],
+    summary: ["6 resources could not be loaded, set aside"],
+    withoutCsp: true,
+    check(html) {
+      expect(count(html, "data-page-archiver-unfetched-")).toBe(3);
+      expect(html).toMatch(/<link rel="stylesheet" data-page-archiver-unfetched-href="http:\/\/127\.0\.0\.1:\d+\/css\/gone\.css">/);
+      // the <style> rule's and the style attribute's (whose quotes are written &quot;)
+      expect(count(html, /url\((?:"|&quot;)data:,(?:"|&quot;)\) \/\* page-archiver unfetched: /)).toBe(2);
+      expect(html).toMatch(/\/\* page-archiver unfetched @import: http:\/\/127\.0\.0\.1:\d+\/css\/gone-import\.css \*\//);
+      expect(html, "no @import rule left to fetch").not.toMatch(/@import\s+(url\(|["'])/);
+    },
+  },
   "form-state": {
     check(html) {
       expect(html).toMatch(/<input id="name" type="text" value="Ada Lovelace">/);
@@ -175,7 +199,8 @@ for (const [fixture, spec] of Object.entries(FIXTURES)) {
     const url = fixtureUrl(fixture);
 
     const dismiss = LIVE_DISMISS[fixture];
-    const live = await screenshotLive(browser, url, dismiss ? { dismiss } : {});
+    const broken = LIVE_BROKEN[fixture];
+    const live = await screenshotLive(browser, url, { ...(dismiss ? { dismiss } : {}), ...(broken ? { broken } : {}) });
     await testInfo.attach("live.png", { body: live, contentType: "image/png" });
 
     const outDir = testInfo.outputPath("capture");
@@ -206,6 +231,10 @@ for (const [fixture, spec] of Object.entries(FIXTURES)) {
     await testInfo.attach("archive.png", { body: opened.screenshot, contentType: "image/png" });
     expect(opened.blocked, "requests the archive made").toEqual([]);
     expect(opened.violations, "CSP violations the archive raised").toEqual([]);
+    if (spec.withoutCsp) {
+      const bare = await openOffline(browser, archiveFile, { csp: false });
+      expect(bare.blocked, "requests the archive made with no CSP to refuse them").toEqual([]);
+    }
 
     const diff = diffScreenshots(live, opened.screenshot);
     if (diff.diffPng) await testInfo.attach("diff.png", { body: diff.diffPng, contentType: "image/png" });

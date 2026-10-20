@@ -14,7 +14,7 @@ import { ARCHIVE_FILE, capture } from "@page-archiver/core";
 import { fixturePages } from "../../fixtures/server.ts";
 import { diffScreenshots } from "../e2e/compare.ts";
 import { fixtureUrl, VIEWPORT } from "../e2e/env.ts";
-import { LIVE_DISMISS, screenshotLive } from "../e2e/live.ts";
+import { LIVE_BROKEN, LIVE_DISMISS, screenshotLive } from "../e2e/live.ts";
 import { openOffline } from "../e2e/offline.ts";
 import { ROWS_DIR, type OracleResult, type OracleRow } from "./table.ts";
 
@@ -57,7 +57,8 @@ for (const fixture of fixturePages()) {
     test.setTimeout(240_000);
     const url = fixtureUrl(fixture);
     const dismiss = LIVE_DISMISS[fixture];
-    const live = await screenshotLive(browser, url, dismiss ? { dismiss } : {});
+    const broken = LIVE_BROKEN[fixture];
+    const live = await screenshotLive(browser, url, { ...(dismiss ? { dismiss } : {}), ...(broken ? { broken } : {}) });
 
     const oursDir = testInfo.outputPath("ours");
     await capture(url, { outDir: oursDir, browser });

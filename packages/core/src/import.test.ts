@@ -67,7 +67,7 @@ describe("importHtml of an archive page-archiver made (the Chrome extension's)",
   /** An archive stamped as assemble() stamps one. */
   function ours(body = "<p>Captured text, long enough to read.</p>"): string {
     const doc = parseDocument(`<!doctype html><title>Ours</title>${body}`);
-    stamp(doc, { sourceUrl: "https://made.test/p", capturedAt: new Date("2026-10-20T08:00:00Z"), toolVersion: "0.1.0", warnings: ["x.png: fetch failed (HTTP 404); kept as a link"] });
+    stamp(doc, { sourceUrl: "https://made.test/p", capturedAt: new Date("2026-10-20T08:00:00Z"), toolVersion: "0.1.0", warnings: ["x.png: fetch failed (HTTP 404); set aside"] });
     return finalizeStamp(serializeDocument(doc)).html;
   }
 
@@ -76,11 +76,11 @@ describe("importHtml of an archive page-archiver made (the Chrome extension's)",
       tool: "page-archiver",
       url: "https://made.test/p",
       savedAt: new Date("2026-10-20T08:00:00Z"),
-      warnings: ["x.png: fetch failed (HTTP 404); kept as a link"],
+      warnings: ["x.png: fetch failed (HTTP 404); set aside"],
     });
     const a = importHtml(ours(), { savedAt: new Date("2030-01-01T00:00:00Z"), source: "the Chrome extension", reader: false });
     expect(a.meta).toMatchObject({ url: "https://made.test/p", capturedAt: "2026-10-20T08:00:00.000Z", title: "Ours" });
-    expect(a.meta.warnings).toEqual(["x.png: fetch failed (HTTP 404); kept as a link"]);
+    expect(a.meta.warnings).toEqual(["x.png: fetch failed (HTTP 404); set aside"]);
     expect(JSON.parse(readStamp(a.html)["warnings"]!)).toEqual(a.meta.warnings);
     expect(verifyStamp(a.html)).toBe(true);
     // nothing changed, so the import is the same bytes
@@ -90,7 +90,7 @@ describe("importHtml of an archive page-archiver made (the Chrome extension's)",
   it("still sanitizes it, whatever it claims to be", () => {
     const a = importHtml(ours('<script>steal()</script><p onclick="x()">Text.</p>'), { reader: false });
     expect(a.html).not.toMatch(/<script|onclick/);
-    expect(a.meta.warnings).toEqual(["x.png: fetch failed (HTTP 404); kept as a link", "removed 1 script elements and 1 script attributes"]);
+    expect(a.meta.warnings).toEqual(["x.png: fetch failed (HTTP 404); set aside", "removed 1 script elements and 1 script attributes"]);
   });
 
   it("prefers its own intact stamp to a SingleFile comment the page carried, and SingleFile's to a stamp edited since", () => {
@@ -102,7 +102,7 @@ describe("importHtml of an archive page-archiver made (the Chrome extension's)",
     expect(readSavedHeader(quoting)).toMatchObject({ tool: "page-archiver", url: "https://made.test/p", savedAt: new Date("2026-10-20T08:00:00Z") });
     const a = importHtml(quoting, { reader: false });
     expect(a.meta).toMatchObject({ url: "https://made.test/p", capturedAt: "2026-10-20T08:00:00.000Z" });
-    expect(a.meta.warnings).toEqual(["x.png: fetch failed (HTTP 404); kept as a link"]);
+    expect(a.meta.warnings).toEqual(["x.png: fetch failed (HTTP 404); set aside"]);
     // the same bytes changed after the stamp (re-saved by SingleFile): SingleFile's header wins
     expect(readSavedHeader(quoting.replace("Quoted.", "Edited."))).toMatchObject({ tool: "singlefile", url: "https://elsewhere.test/" });
   });

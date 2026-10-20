@@ -6,9 +6,9 @@
 export const LARGE_ARCHIVE_BYTES = 50 * 1024 * 1024;
 
 const KINDS: Array<{ test: RegExp; line: (n: number) => string }> = [
-  { test: /: over the [\d.]+ MB per-resource cap/, line: (n) => `${n} ${plural(n, "resource")} over the per-resource size cap, kept as links` },
-  { test: /: over the [\d.]+ MB total cap/, line: (n) => `${n} ${plural(n, "resource")} over the page's total size cap, kept as links` },
-  { test: /: (fetch failed|not recorded|HTTP \d+|body unavailable)/, line: (n) => `${n} ${plural(n, "resource")} could not be loaded, kept as links` },
+  { test: /: over the [\d.]+ MB per-resource cap/, line: (n) => `${n} ${plural(n, "resource")} over the per-resource size cap, set aside` },
+  { test: /: over the [\d.]+ MB total cap/, line: (n) => `${n} ${plural(n, "resource")} over the page's total size cap, set aside` },
+  { test: /: (fetch failed|not recorded|HTTP \d+|body unavailable)/, line: (n) => `${n} ${plural(n, "resource")} could not be loaded, set aside` },
   { test: /^(video|audio) \S+: media not archived; /, line: (n) => `${n} video or audio ${plural(n, "file")} not archived` },
 ];
 

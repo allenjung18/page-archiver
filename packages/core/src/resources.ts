@@ -39,7 +39,7 @@ export function createResolver(opts: ResolverOptions): Resolver {
   function admit(url: string, bytes: Uint8Array): boolean {
     if (total + bytes.byteLength > totalCap) {
       stats.failed++;
-      warnings.push(`${url}: over the ${totalCap / MB} MB total cap; kept as a link`);
+      warnings.push(`${url}: over the ${totalCap / MB} MB total cap; set aside`);
       return false;
     }
     total += bytes.byteLength;
@@ -55,12 +55,12 @@ export function createResolver(opts: ResolverOptions): Resolver {
     }
     if (found.kind === "unusable" && !found.refetch) {
       stats.failed++;
-      warnings.push(`${url}: ${found.reason}; kept as a link`);
+      warnings.push(`${url}: ${found.reason}; set aside`);
       return null;
     }
     if (!opts.fallback) {
       stats.failed++;
-      warnings.push(`${url}: not recorded; kept as a link`);
+      warnings.push(`${url}: not recorded; set aside`);
       return null;
     }
     try {
@@ -72,7 +72,7 @@ export function createResolver(opts: ResolverOptions): Resolver {
       return { url, mime: res.mime, bytes: res.bytes };
     } catch (err) {
       stats.failed++;
-      warnings.push(`${url}: fetch failed (${(err as Error).message.split("\n")[0]}); kept as a link`);
+      warnings.push(`${url}: fetch failed (${(err as Error).message.split("\n")[0]}); set aside`);
       return null;
     }
   }
