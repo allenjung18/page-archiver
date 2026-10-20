@@ -63,4 +63,15 @@ describe("deliver", () => {
     expect(await deliver(fakeServer({ token: T1, down: true }).fetchFn, memoryStore(), upload)).toMatchObject({ kind: "unreachable", reason: expect.stringMatching(/not running/) });
     expect(await deliver(fakeServer({ token: T1, status: 500 }).fetchFn, memoryStore(), upload)).toEqual({ kind: "refused", reason: "HTTP 500: disk full" });
   });
+
+  it("says the server did not answer in time, not that it is not running, when the POST times out", async () => {
+    const store = memoryStore({ [TOKEN_KEY]: T1 });
+    const slow: Fetch = async (_url, init) => {
+      if (init?.method === "POST") throw new DOMException("The operation timed out.", "TimeoutError");
+      throw new Error("unexpected");
+    };
+    const res = await deliver(slow, store, upload);
+    expect(res).toMatchObject({ kind: "unreachable", reason: expect.stringMatching(/^the library server did not answer in 120 s, so it may have saved the page as well/) });
+    expect(res.kind === "unreachable" && res.reason).not.toMatch(/not running/);
+  });
 });

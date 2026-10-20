@@ -18,7 +18,7 @@ export interface CaptureUpload {
 
 export type Delivery =
   | { kind: "saved"; pageId: string; libraryUrl: string; warnings: string[] }
-  /** The server did not answer (not running): nothing reached it. */
+  /** The server could not be reached, or did not answer in time (it may still have saved it). */
   | { kind: "unreachable"; reason: string }
   /** The server answered and did not save it. */
   | { kind: "refused"; reason: string };
@@ -45,13 +45,24 @@ export function tokenFromPage(html: string): string | null {
   return /<meta name="pa-token" content="([0-9a-f]{32,})">/.exec(html)?.[1] ?? null;
 }
 
-class Unreachable extends Error {}
+/** How long the server gets to answer one request (an import of a large page can be slow). */
+export const ANSWER_TIMEOUT_MS = 120_000;
+
+class Unreachable extends Error {
+  /** It connected and did not answer in time: the server may have saved it all the same. */
+  readonly timedOut: boolean;
+  constructor(message: string, timedOut: boolean) {
+    super(message);
+    this.timedOut = timedOut;
+  }
+}
 
 async function call(fetchFn: Fetch, url: string, init: RequestInit): Promise<Response> {
   try {
-    return await fetchFn(url, { ...init, credentials: "omit", cache: "no-store", signal: AbortSignal.timeout(120_000) });
+    return await fetchFn(url, { ...init, credentials: "omit", cache: "no-store", signal: AbortSignal.timeout(ANSWER_TIMEOUT_MS) });
   } catch (err) {
-    throw new Unreachable(`${url}: ${(err as Error).message}`);
+    const timedOut = (err as Error).name === "TimeoutError";
+    throw new Unreachable(`${url}: ${(err as Error).message}`, timedOut);
   }
 }
 
@@ -94,7 +105,12 @@ export async function deliver(fetchFn: Fetch, store: StorageArea, upload: Captur
     const body = (await res.json()) as { page: { id: string }; warnings?: string[] };
     return { kind: "saved", pageId: body.page.id, libraryUrl: server, warnings: body.warnings ?? [] };
   } catch (err) {
-    if (err instanceof Unreachable) return { kind: "unreachable", reason: `the library server is not running (${err.message})` };
+    if (err instanceof Unreachable) {
+      const reason = err.timedOut
+        ? `the library server did not answer in ${ANSWER_TIMEOUT_MS / 1000} s, so it may have saved the page as well (${err.message})`
+        : `the library server is not running (${err.message})`;
+      return { kind: "unreachable", reason };
+    }
     return { kind: "refused", reason: (err as Error).message };
   }
 }
