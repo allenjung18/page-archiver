@@ -1,6 +1,7 @@
 // Bytes + MIME type -> data: URI. The MIME type comes from the response; when it is missing or
 // generic the bytes are sniffed for the common image and font signatures, because a data: URI
 // with the wrong type renders nothing.
+import { base64, utf8 } from "../bytes.ts";
 
 const GENERIC = new Set(["", "application/octet-stream", "binary/octet-stream", "text/plain"]);
 
@@ -23,7 +24,7 @@ export function sniffMime(bytes: Uint8Array): string | null {
   if (starts([0x77, 0x4f, 0x46, 0x46])) return "font/woff";
   if (starts([0x00, 0x01, 0x00, 0x00]) || starts([0x4f, 0x54, 0x54, 0x4f])) return "font/ttf";
   if (starts([0x66, 0x74, 0x79, 0x70], 4) && starts([0x61, 0x76, 0x69, 0x66], 8)) return "image/avif";
-  const head = Buffer.from(b.subarray(0, 256)).toString("utf8").trimStart().toLowerCase();
+  const head = utf8(b.subarray(0, 256)).trimStart().toLowerCase();
   if (head.startsWith("<svg") || (head.startsWith("<?xml") && head.includes("<svg"))) return "image/svg+xml";
   return null;
 }
@@ -39,7 +40,7 @@ export function effectiveMime(mime: string | undefined | null, bytes: Uint8Array
 export function toDataUri(bytes: Uint8Array, mime: string | undefined | null): string {
   const type = effectiveMime(mime, bytes);
   const charset = type.startsWith("text/") || type === "image/svg+xml" ? ";charset=utf-8" : "";
-  return `data:${type}${charset};base64,${Buffer.from(bytes).toString("base64")}`;
+  return `data:${type}${charset};base64,${base64(bytes)}`;
 }
 
 /** The encoded length of a base64 data: URI for n bytes, without building it. */

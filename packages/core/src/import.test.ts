@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { importHtml, readSingleFileHeader } from "./import.ts";
-import { readStamp, verifyStamp } from "./stamp.ts";
+import { importHtml, readOwnStamp, readSavedHeader, readSingleFileHeader } from "./import.ts";
+import { parseDocument, serializeDocument } from "./dom.ts";
+import { finalizeStamp, readStamp, stamp, verifyStamp } from "./stamp.ts";
 
 const SAVE = `<!DOCTYPE html> <html lang="en"><!--
  Page saved with SingleFile 
@@ -59,5 +60,41 @@ describe("importHtml", () => {
 
   it("lets an explicit URL win over the file's own", () => {
     expect(importHtml(SAVE, { url: "https://other.test/k" }).meta.url).toBe("https://other.test/k");
+  });
+});
+
+describe("importHtml of an archive page-archiver made (the Chrome extension's)", () => {
+  /** An archive stamped as assemble() stamps one. */
+  function ours(body = "<p>Captured text, long enough to read.</p>"): string {
+    const doc = parseDocument(`<!doctype html><title>Ours</title>${body}`);
+    stamp(doc, { sourceUrl: "https://made.test/p", capturedAt: new Date("2026-10-20T08:00:00Z"), toolVersion: "0.1.0", warnings: ["x.png: fetch failed (HTTP 404); kept as a link"] });
+    return finalizeStamp(serializeDocument(doc)).html;
+  }
+
+  it("keeps the stamp's URL, capture time and warnings, and says nothing about an import", () => {
+    expect(readOwnStamp(ours())).toEqual({
+      tool: "page-archiver",
+      url: "https://made.test/p",
+      savedAt: new Date("2026-10-20T08:00:00Z"),
+      warnings: ["x.png: fetch failed (HTTP 404); kept as a link"],
+    });
+    const a = importHtml(ours(), { savedAt: new Date("2030-01-01T00:00:00Z"), source: "the Chrome extension", reader: false });
+    expect(a.meta).toMatchObject({ url: "https://made.test/p", capturedAt: "2026-10-20T08:00:00.000Z", title: "Ours" });
+    expect(a.meta.warnings).toEqual(["x.png: fetch failed (HTTP 404); kept as a link"]);
+    expect(JSON.parse(readStamp(a.html)["warnings"]!)).toEqual(a.meta.warnings);
+    expect(verifyStamp(a.html)).toBe(true);
+    // nothing changed, so the import is the same bytes
+    expect(a.html).toBe(ours());
+  });
+
+  it("still sanitizes it, whatever it claims to be", () => {
+    const a = importHtml(ours('<script>steal()</script><p onclick="x()">Text.</p>'), { reader: false });
+    expect(a.html).not.toMatch(/<script|onclick/);
+    expect(a.meta.warnings).toEqual(["x.png: fetch failed (HTTP 404); kept as a link", "removed 1 script elements and 1 script attributes"]);
+  });
+
+  it("prefers a SingleFile header to any page-archiver metas", () => {
+    expect(readSavedHeader(SAVE)).toMatchObject({ tool: "singlefile", url: "https://example.org/notes/kelp#top" });
+    expect(readSavedHeader("<!doctype html><p>x")).toBeNull();
   });
 });

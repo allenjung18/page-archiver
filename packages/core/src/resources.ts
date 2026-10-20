@@ -6,11 +6,11 @@ import { MB, type Recorder } from "./recorder.ts";
 export interface Resource {
   url: string;
   mime: string;
-  bytes: Buffer;
+  bytes: Uint8Array;
 }
 
 /** Fetches what the recorder did not see (Playwright's context.request in a capture). */
-export type FallbackFetch = (url: string) => Promise<{ status: number; mime: string; bytes: Buffer }>;
+export type FallbackFetch = (url: string) => Promise<{ status: number; mime: string; bytes: Uint8Array }>;
 
 export interface Resolver {
   /** The resource's bytes, or null (and a warning) when it cannot be had. */
@@ -36,7 +36,7 @@ export function createResolver(opts: ResolverOptions): Resolver {
   const totalCap = opts.totalCap ?? 200 * MB;
   let total = 0;
 
-  function admit(url: string, bytes: Buffer): boolean {
+  function admit(url: string, bytes: Uint8Array): boolean {
     if (total + bytes.byteLength > totalCap) {
       stats.failed++;
       warnings.push(`${url}: over the ${totalCap / MB} MB total cap; kept as a link`);

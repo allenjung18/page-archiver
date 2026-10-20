@@ -3,6 +3,7 @@
 // by a data: URI. Relative URLs resolve against the SHEET's own URL, never the page's: an
 // @import chain two folders deep must still find its backgrounds.
 import postcss, { type AtRule, type ChildNode, type Root } from "postcss";
+import { utf8 } from "../bytes.ts";
 import type { Resource } from "../resources.ts";
 import { toDataUri } from "./datauri.ts";
 import { pruneFontSrc, type FontFilter } from "./fonts.ts";
@@ -122,8 +123,8 @@ function wrap(nodes: ChildNode[], p: ImportParams): ChildNode[] {
   return inner;
 }
 
-function decode(bytes: Buffer): string {
-  const text = bytes.toString("utf8");
+function decode(bytes: Uint8Array): string {
+  const text = utf8(bytes);
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 

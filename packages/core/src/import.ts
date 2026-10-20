@@ -1,6 +1,8 @@
 // `pa import`: an HTML file saved by another tool (SingleFile, mostly) made into a capture like
 // one of ours: sanitized (no scripts, no script hooks), stamped, with a reader copy and meta.json.
-// Nothing is fetched; what the file holds is what the archive holds.
+// Nothing is fetched; what the file holds is what the archive holds. A file page-archiver made
+// itself (the Chrome extension's capture, or its downloaded archive.html) keeps its own stamp's
+// URL, capture time and warnings: it is a capture, not an import.
 import { TOOL_NAME, TOOL_VERSION } from "./archive.ts";
 import type { Archive } from "./capture.ts";
 import { documentLang } from "./capture.ts";
@@ -8,12 +10,19 @@ import { allElements, parseDocument, serializeDocument, textOf } from "./dom.ts"
 import { extractReader, renderReader } from "./extras/reader.ts";
 import { newPageId, normalizeTags, type PageMeta } from "./meta.ts";
 import { sanitizeDocument } from "./sanitize.ts";
-import { canonicalUrl, finalizeStamp, stamp } from "./stamp.ts";
+import { canonicalUrl, finalizeStamp, readStamp, stamp } from "./stamp.ts";
 
 /** What SingleFile writes into the comment at the top of every save. */
 export interface SingleFileHeader {
   url: string | null;
   savedAt: Date | null;
+}
+
+/** Where a saved file says it came from: SingleFile's header comment, or page-archiver's own stamp. */
+export interface SavedHeader extends SingleFileHeader {
+  tool: "singlefile" | "page-archiver";
+  /** The warnings page-archiver stamped into the file (none for SingleFile). */
+  warnings: string[];
 }
 
 const HEADER_MARK = /saved with SingleFile/i;
@@ -29,6 +38,28 @@ export function readSingleFileHeader(html: string): SingleFileHeader | null {
     return { url, savedAt: savedAt && !Number.isNaN(savedAt.getTime()) ? savedAt : null };
   }
   return null;
+}
+
+/** The stamp page-archiver wrote into one of its own archives; null when the file has none. */
+export function readOwnStamp(html: string): SavedHeader | null {
+  const s = readStamp(html.slice(0, 256 * 1024));
+  if (!s["source-url"] || !s["captured-at"]) return null;
+  const at = new Date(s["captured-at"]);
+  let warnings: string[] = [];
+  try {
+    const parsed: unknown = JSON.parse(s["warnings"] ?? "[]");
+    if (Array.isArray(parsed)) warnings = parsed.filter((w): w is string => typeof w === "string");
+  } catch {
+    // an unreadable warnings meta is dropped, never fatal
+  }
+  return { tool: "page-archiver", url: s["source-url"], savedAt: Number.isNaN(at.getTime()) ? null : at, warnings };
+}
+
+/** The saved file's header: SingleFile's comment first, else page-archiver's own stamp. */
+export function readSavedHeader(html: string): SavedHeader | null {
+  const sf = readSingleFileHeader(html);
+  if (sf) return { ...sf, tool: "singlefile", warnings: [] };
+  return readOwnStamp(html);
 }
 
 export interface ImportOptions {
@@ -51,7 +82,7 @@ export interface ImportOptions {
  * `url` wins over the header.
  */
 export function importHtml(html: string, opts: ImportOptions = {}): Archive {
-  const header = readSingleFileHeader(html);
+  const header = readSavedHeader(html);
   const url = opts.url ?? header?.url ?? null;
   if (!url) throw new Error("the file does not say which URL it was saved from; pass the URL");
   let parsed: URL;
@@ -65,11 +96,19 @@ export function importHtml(html: string, opts: ImportOptions = {}): Archive {
 
   const doc = parseDocument(html);
   const removed = sanitizeDocument(doc);
-  const origin = header ? " (SingleFile)" : "";
   const removedNote = removed.elements || removed.attributes ? [`removed ${removed.elements} script elements and ${removed.attributes} script attributes`] : [];
-  // the stamp never names the file, so the same save under another name stamps to the same bytes
-  const stamped = [`imported from a saved file${origin}`, ...removedNote];
-  const warnings = [`imported from ${opts.source ?? "a saved file"}${origin}`, ...removedNote];
+  let stamped: string[];
+  let warnings: string[];
+  if (header?.tool === "page-archiver") {
+    // one of our own captures: its warnings stand, and nothing says it was imported
+    stamped = [...header.warnings, ...removedNote];
+    warnings = [...stamped];
+  } else {
+    const origin = header ? " (SingleFile)" : "";
+    // the stamp never names the file, so the same save under another name stamps to the same bytes
+    stamped = [`imported from a saved file${origin}`, ...removedNote];
+    warnings = [`imported from ${opts.source ?? "a saved file"}${origin}`, ...removedNote];
+  }
   const canonical = canonicalUrl(doc);
   stamp(doc, { sourceUrl: parsed.href, canonicalUrl: canonical, capturedAt, toolVersion: TOOL_VERSION, warnings: stamped });
   const { html: archiveHtml, sha256 } = finalizeStamp(serializeDocument(doc));

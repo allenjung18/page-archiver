@@ -1,8 +1,0 @@
-{
-  "manifest_version": 3,
-  "name": "page-archiver",
-  "version": "0.0.0",
-  "description": "Save the page you are reading as one self-contained HTML file.",
-  "permissions": [],
-  "host_permissions": []
-}

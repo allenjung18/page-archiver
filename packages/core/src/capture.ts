@@ -9,21 +9,17 @@ import { fileURLToPath } from "node:url";
 import type { Snapshot } from "@page-archiver/serializer";
 import type { Frame } from "playwright";
 import { ARCHIVE_FILE, TOOL_NAME, TOOL_VERSION } from "./archive.ts";
+import { assemble } from "./assemble.ts";
 import { openBrowser, type BrowserOptions } from "./browser.ts";
-import { allElements, getAttr, isElement, parseDocument, removeAttr, serializeDocument, setAttr, type Document } from "./dom.ts";
+import { getAttr, isElement, type Document } from "./dom.ts";
 import { captureMhtml, MHTML_FILE } from "./extras/mhtml.ts";
 import { extractReader, READER_FILE, renderReader, type ReaderView } from "./extras/reader.ts";
 import { PDF_FILE, PNG_FILE, printPdf, screenshotPng } from "./extras/shot.ts";
-import { FRAME_ATTRIBUTE, MAX_FRAME_DEPTH, snapshotFrames, type FrameCapture } from "./frames.ts";
-import { createFontFilter } from "./inline/fonts.ts";
-import { inlineDocument } from "./inline/html.ts";
+import { MAX_FRAME_DEPTH, snapshotFrames } from "./frames.ts";
 import { META_FILE, newPageId, normalizeTags, serializeMeta, type PageMeta } from "./meta.ts";
 import { createRecorder, DEFAULT_RESOURCE_CAP, DEFAULT_TOTAL_CAP } from "./recorder.ts";
-import { createResolver, type Resolver } from "./resources.ts";
-import { sanitizeDocument, type SanitizeReport } from "./sanitize.ts";
+import { createResolver } from "./resources.ts";
 import { settle, trackNetwork, type SettleOptions } from "./settle.ts";
-import { canonicalUrl, finalizeStamp, stamp } from "./stamp.ts";
-import { sizeWarning, summarizeWarnings } from "./warnings.ts";
 
 /** What a capture makes besides archive.html. */
 export interface Extras {
@@ -169,16 +165,10 @@ export async function capture(url: string, opts: CaptureOptions = {}): Promise<A
       },
     });
 
-    const built = { removed: { elements: 0, attributes: 0 }, frames: 0, fontFacesDropped: 0 };
-    const doc = await buildFrame(tree, { resolver, fetched: (u) => recorder.has(u), warn: (m) => warnings.push(m), built });
+    const assembled = await assemble({ tree, sourceUrl: parsed.href, capturedAt, resolver, fetched: (u) => recorder.has(u), warnings });
     recorder.stop();
-    const all = [...warnings, ...resolver.warnings];
-    const tooBig = sizeWarning(Buffer.byteLength(serializeDocument(doc)));
-    if (tooBig) all.push(tooBig);
-    const summary = summarizeWarnings(all);
-    const canonical = canonicalUrl(doc);
-    stamp(doc, { sourceUrl: parsed.href, canonicalUrl: canonical, capturedAt, toolVersion: TOOL_VERSION, warnings: summary });
-    const { html, sha256 } = finalizeStamp(serializeDocument(doc));
+    const { doc, html, sha256, summary, built, canonicalUrl: canonical } = assembled;
+    const all = assembled.warnings;
 
     // the extras: MHTML and pictures from the live page (still as it was snapshotted), the
     // reader copy from the finished archive, whose images are already inlined
@@ -276,49 +266,4 @@ export async function writeCapture(dir: string, archive: Archive): Promise<NonNu
   return files;
 }
 
-export interface BuildContext {
-  resolver: Resolver;
-  fetched: (url: string) => boolean;
-  warn: (message: string) => void;
-  built: { removed: SanitizeReport; frames: number; fontFacesDropped: number };
-}
-
-/**
- * One frame's snapshot made into a sanitized, self-contained document, its child frames built the
- * same way and written into their <iframe> elements as srcdoc.
- */
-export async function buildFrame(capture: FrameCapture, ctx: BuildContext): Promise<Document> {
-  const { snap } = capture;
-  for (const w of snap.warnings ?? []) ctx.warn(capture.depth ? `frame ${capture.url}: ${w}` : w);
-  const doc = parseDocument(snap.html);
-  const removed = sanitizeDocument(doc);
-  ctx.built.removed.elements += removed.elements;
-  ctx.built.removed.attributes += removed.attributes;
-  const fonts = createFontFilter(snap.fonts);
-  await inlineDocument(doc, { baseUrl: snap.baseUrl, get: (u) => ctx.resolver.get(u), warn: ctx.warn, fonts, fetched: ctx.fetched });
-  ctx.built.fontFacesDropped += fonts?.dropped ?? 0;
-
-  for (const el of allElements(doc)) {
-    // <object> and <embed> documents are frames too, and are marked; only iframes become srcdoc
-    const id = getAttr(el, FRAME_ATTRIBUTE);
-    if (id !== null) removeAttr(el, FRAME_ATTRIBUTE);
-    if (el.tagName !== "iframe" && el.tagName !== "frame") continue;
-    const child = id ? capture.children.get(id) : undefined;
-    if (child && el.tagName === "iframe") {
-      const inner = await buildFrame(child, ctx);
-      removeAttr(el, "src");
-      removeAttr(el, "loading");
-      removeAttr(el, "srcdoc");
-      setAttr(el, "srcdoc", serializeDocument(inner));
-      ctx.built.frames++;
-      continue;
-    }
-    const src = getAttr(el, "src");
-    if (src !== null && src.trim() && !/^about:/i.test(src.trim())) {
-      // a child that is too deep or failed (null) already has its warning; a captured <frame> does not
-      if (child !== null) ctx.warn(`${el.tagName} ${src}: ${el.tagName === "frame" ? "<frame> is not supported" : "not loaded by the page"}; left empty`);
-      removeAttr(el, "src");
-    }
-  }
-  return doc;
-}
+export { buildFrame, type BuildContext } from "./assemble.ts";
