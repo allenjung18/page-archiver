@@ -260,14 +260,16 @@ comparison, not a gate: the run fails only when page-archiver fails.
 Fixtures prove the hard cases one at a time; real pages combine them with ads, consent
 managers and a few hundred requests. `npm run smoke` captures every page listed in
 `test/smoke-urls.txt` from the live web and opens each archive offline: it fails a page on any
-request or CSP violation the archive makes (one the capture already reported, a resource the
-site refused, is counted but excused) or when the page's expected text is missing, which tells
-a saved article from a bot wall. `test-results/smoke.md` gets a table of results, sizes,
+request or CSP violation the archive makes, exactly as the offline test does, or when the page's
+expected text is missing, which tells a saved article from a bot wall. A resource the site
+refused (an HTTP error) is kept as a link and so fails the page too; the report counts those
+apart. `test-results/smoke.md` gets a table of results, sizes,
 live-versus-offline pixel differences and warnings. It is never part of `npm test` or
 `npm run test:e2e`.
 
-The committed list is ten public pages of different shapes; replace it with the pages you
-save. A page known not to save gets `| miss: <reason>` on its line instead of a workaround.
+The committed list is ten public pages of different shapes, two of them recorded misses (a
+site answering some of its own images with HTTP errors); replace it with the pages you save. A
+page known not to save gets `| miss: <reason>` on its line instead of a workaround.
 Every bug the smoke run found is reproduced by a fixture, listed in
 [Documentation/Review.md](Documentation/Review.md); [Documentation/Testing.md](Documentation/Testing.md)
 has the details.

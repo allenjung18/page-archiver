@@ -54,8 +54,10 @@ at run time so the extension's service worker can bundle it (`packages/core/src/
    `document.fonts.ready`, and every image decoded (5 s cap). An idle cap that runs out, a
    selector that never came, or a scroll that hit the step limit is a warning.
 4. **Poster frames.** `capturePosterFrames` (`posters.ts`) screenshots each visible `<video>`
-   in every frame (at most `MAX_POSTER_FRAMES`, 20; each frame's loading videos get
-   `VIDEO_READY_MS`, 3 s, to show a picture) and sets the PNG on the live element as
+   in every frame, open shadow roots included (at most `MAX_POSTER_FRAMES`, 20; each frame's
+   loading videos get `VIDEO_READY_MS`, 3 s, to show a picture), puts back the scroll position
+   of the window and of every box around the video that the screenshot scrolled, and sets the
+   PNG on the live element as
    `POSTER_FRAME_ATTRIBUTE`, with the video's own `videoWidth / videoHeight` as
    `VIDEO_RATIO_ATTRIBUTE` (both in `inline/html.ts`). A screenshot, not a canvas, so a
    cross-origin video works too.

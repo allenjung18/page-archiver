@@ -95,21 +95,26 @@ it once (with the reader copy and a PNG, `capture` with `extras`), opens the arc
 `openOffline`, and fails on:
 
 - any request the archive made;
-- any CSP violation the capture did **not** already report: a resource the site would not give
-  (an HTTP error, a cap) is kept as a link and named in a warning ending `; kept as a link`, and
-  a violation for that URL is counted under "kept as links" rather than failing the page
-  (`splitViolations`);
+- any CSP violation, exactly as in the offline assertion. A violation for a resource the site
+  would not give (an HTTP error, a cap), which the capture kept as a link and named in a warning
+  ending `; kept as a link`, is named apart and counted under "kept as links" (`splitViolations`),
+  because its cause is the site rather than a reference the capture missed; it still fails the
+  page;
+- the archive failing to open at all;
 - the expected text missing from `document.title` plus the body's text, compared ignoring case
   and runs of white space (`normalizeText`): this tells a saved page from a bot wall or an error
   page.
 
 The live-versus-offline pixel diff is reported, never asserted: real pages move. A line with
 `miss: <reason>` marks a page known not to save cleanly; its test is expected to fail
-(`test.fail`), so Playwright reports it when it starts passing. A site that refuses headless
-capture is recorded that way, never worked around.
+(`test.fail`), so Playwright reports it when it starts passing. A page that fails only on
+resources kept as links, and a site that refuses headless capture, are recorded that way, never
+worked around.
 
 After the run, `test/smoke/table.ts` writes `test-results/smoke.md`: one row per page (result,
-size, diff, warnings, kept as links, problems) and each page's warnings. Captures stay in
+size, diff, warnings, kept as links, problems) and each page's warnings. Each test writes a
+provisional failing row before it starts, so a page whose test throws or runs out of time is
+still in the table. Captures stay in
 `test-results/smoke/<test>/capture/` until the next run. `playwright.smoke.config.ts` reuses the
 main config without the fixture server, two workers.
 

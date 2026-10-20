@@ -1,8 +1,8 @@
 # Review: real sites, 2026-10-20
 
 A review pass over what the fixtures could not show: ten real pages (`test/smoke-urls.txt`)
-captured with `npm run smoke` and opened offline, every failure traced to its cause, and the
-documentation checked against the code. Each finding is **must-fix** (an archive that breaks
+captured with `npm run smoke` and opened offline, every failure traced to its cause, the
+documentation checked against the code, and a second reader's review of the resulting change. Each finding is **must-fix** (an archive that breaks
 the offline promise, or a test that reports something false), **should-fix**, or **consider**.
 
 Every must-fix item is fixed, and each fix has a test that fails without it (a fixture in
@@ -11,10 +11,19 @@ Every must-fix item is fixed, and each fix has a test that fails without it (a f
 
 ## Smoke results
 
-First run: 5 of 10 pages passed. After fixes 1 to 4: 10 of 10, nine of them at or under 1.25%
-live-versus-offline pixel difference and the product page at 7.63%, which was finding 5: the
-same capture re-opened with the fixed harness differs by 0.00%. (The difference is read, not
-asserted: real pages move.)
+First run: 5 of 10 pages passed. After fixes 1 to 4: 10 of 10 with violations for resources kept
+as links excused, nine of them at or under 1.25% live-versus-offline pixel difference and the
+product page at 7.63%, which was finding 5: the same capture re-opened with the fixed harness
+differs by 0.00%. (The difference is read, not asserted: real pages move.)
+
+That excuse was then dropped (finding 17): the smoke run applies the offline assertion as it is,
+so the two pages whose only violations are resources the site refused are recorded misses.
+Final run, with every fix: 8 pages pass and the two recorded misses fail as recorded
+(Playwright: 10 passed, a recorded miss that fails counts as passing). The eight are at or under
+1.25% difference, the product page at 0.00%. On that run, the recipe site's fourth capture of
+the day, the site also answered 48 of its own and its partners' fonts and icons with HTTP 403,
+so its archive lacks them (a 100% difference: the page height changed); its miss reason says
+so. That is the site refusing a headless browser, recorded, not worked around.
 
 ## Must-fix (all fixed)
 
@@ -34,8 +43,17 @@ assertion, and passes again with the change restored.
 | # | Seen on | What | Done |
 |---|---|---|---|
 | 6 | mdn | the expected text was wrong: the page's heading is "HTML image embed element" | the list corrected |
-| 7 | substack | an avatar the site answers with HTTP 404 is kept as a link, so the archive asks for it and the CSP refuses it | behaviour as designed and reported in the capture's warnings; the smoke run counts such a violation under "kept as links" instead of failing the page (`splitViolations`, `test/smoke/list.ts`) |
+| 7 | substack, recipe | resources the site answers with an HTTP error (an avatar; ad-sync pixels) are kept as links, as designed and reported in the capture's warnings, so the archive refers to the network and the CSP refuses it | both pages recorded as misses with that reason; the report counts these violations apart (`splitViolations`, `test/smoke/list.ts`). See consider 18 |
 | 8 | README, `library.spec.ts` | both said the library test uses 20 fixture pages; the count follows `fixtures/pages/` | both now say every fixture page; the spec asserts at least 20 |
+
+## From the second review (all fixed)
+
+| # | What went wrong | Fix | Test that fails without it |
+|---|---|---|---|
+| 14 | `capturePosterFrames` counted videos with `querySelectorAll`, which stops at shadow roots, but picked them with a locator that does not: a video inside a player component got no poster frame, and one before a light-DOM video pushed the last one out | count and wait through the same `frame.locator("video")` (`videosReady`) | `media` fixture: a `<video-card>` with its video in an open shadow root |
+| 15 | the poster screenshot scrolled every box around the video into view (a carousel onto its video slide), and the snapshot froze that scroll position; only the window was reset, and only when a screenshot succeeded | every ancestor's and the window's scroll position is saved before each screenshot and put back after it, whatever happens | `media` fixture: the shadow-root video sits on the second slide of a scroll strip, which must stay on its first |
+| 16 | a smoke test that threw while opening the archive, or ran out of time, wrote no row, so the report left out exactly the failing page | a provisional failing row is written first; opening the archive is caught and reported as a problem | none automatic (the smoke run needs the network); `Testing.md` describes it |
+| 17 | the smoke run excused CSP violations for resources kept as links, so it was looser than the offline assertion it claims to run | every violation fails the page; kept-as-link ones are named apart | `list.test.ts` (`splitViolations`); recipe and substack are now recorded misses |
 
 ## Should-fix
 
@@ -50,3 +68,4 @@ None.
 | 11 | substack | "scrolled 60 screens and stopped": the comments keep loading as the page is scrolled | `MAX_SCROLL_STEPS` is the guard against endless pages; the article itself is all there |
 | 12 | (extension) | a page saved from Chrome gets no poster frames: Playwright's element screenshot is not available to an extension | the video keeps the page's own poster; capturing a frame from the extension would need `chrome.tabs.captureVisibleTab` and scrolling the reader's tab |
 | 13 | smoke list | the committed pages were chosen for coverage, not by the person who uses the archive | replace them with your own pages and run `npm run smoke` |
+| 18 | recipe, substack | a resource the capture cannot have is kept as an absolute link. Offline under the archive CSP that is a refused request; opened from disk without the CSP, the browser fetches it (on the recipe page, ad-sync pixels). Setting such a URL aside, as video sources are (`data-page-archiver-src`), would make every archive request-free | it changes a documented behaviour from the first chunks (an online reader still sees a resource the capture missed); it is the owner's choice |
