@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Client-rendered app</title>
+<style>
+  body { margin: 0; font: 16px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #1c1c1c; background: #fafafa; }
+  .loading { padding: 48px; color: #999; }
+</style>
+</head>
+<body>
+<!-- Everything visible is built by the script below after a fetch: the HTML the server sends
+     is an empty shell, so only a capture of the rendered DOM shows the page. -->
+<div id="root"><p class="loading">Loading…</p></div>
+<script>
+  const ASSETS = "{{ASSETS}}";
+  async function render() {
+    const data = await (await fetch(`${ASSETS}/data/spa.json`)).json();
+    await new Promise((r) => setTimeout(r, 200));
+    const style = document.createElement("style");
+    style.id = "app-style";
+    style.textContent = `
+      .app header { padding: 24px 32px; background: #1f3b57 url(${ASSETS}/img/paper.png) repeat; color: #fff; }
+      .app h1 { margin: 0; font-size: 32px; }
+      .app ul { list-style: none; margin: 0; padding: 24px 32px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+      .app li { background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+      .app li img { display: block; width: 100%; height: 180px; object-fit: cover; }
+      .app li h2 { margin: 12px 16px 4px; font-size: 19px; }
+      .app li p { margin: 0 16px 16px; color: #555; }
+    `;
+    document.head.append(style);
+    const root = document.getElementById("root");
+    root.className = "app";
+    root.innerHTML = "";
+    const header = document.createElement("header");
+    header.innerHTML = `<h1></h1>`;
+    header.querySelector("h1").textContent = data.title;
+    const list = document.createElement("ul");
+    for (const item of data.items) {
+      const li = document.createElement("li");
+      const img = document.createElement("img");
+      img.src = `${ASSETS}/${item.image}`;
+      img.alt = item.title;
+      const h2 = document.createElement("h2");
+      h2.textContent = item.title;
+      const p = document.createElement("p");
+      p.textContent = item.summary;
+      // a handler written as an attribute and one added as a listener: neither may survive
+      li.setAttribute("onclick", "alert('opened')");
+      li.addEventListener("mouseenter", () => li.classList.add("hover"));
+      li.append(img, h2, p);
+      list.append(li);
+    }
+    root.append(header, list);
+    history.replaceState(null, "", "?view=list");
+  }
+  render();
+</script>
+</body>
+</html>

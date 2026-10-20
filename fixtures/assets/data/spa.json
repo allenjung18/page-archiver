@@ -1,0 +1,9 @@
+{
+  "title": "Field notes, rendered in the browser",
+  "items": [
+    { "title": "Tide tables", "summary": "Two highs and two lows, a little later every day.", "image": "img/lazy-3.png" },
+    { "title": "Cloud types", "summary": "Cirrus, cumulus, stratus, and the ones in between.", "image": "img/lazy-4.png" },
+    { "title": "Bird counts", "summary": "Forty-one species on the morning walk.", "image": "img/lazy-5.png" },
+    { "title": "Rain gauge", "summary": "Eleven millimetres overnight, none since.", "image": "img/lazy-6.png" }
+  ]
+}

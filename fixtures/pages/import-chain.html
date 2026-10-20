@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>An @import chain</title>
+<!-- main.css imports parts/layout.css and parts/cards.css (screen only); layout.css imports
+     ../../shared/type.css, which imports main.css again (a cycle browsers ignore). Every sheet's
+     url()s are relative to THAT sheet, so a capture resolving them against the page breaks them. -->
+<link rel="stylesheet" href="{{ASSETS}}/css/chain/main.css">
+<style>
+  @import url("{{ASSETS}}/css/chain/inline-import.css");
+  .page-rule { color: #5a3e1b; }
+</style>
+</head>
+<body>
+<main>
+  <div class="banner"><h1>Four sheets deep</h1></div>
+  <p class="page-rule">This page's look comes from a chain of stylesheets on another origin, each importing the next.</p>
+  <div class="rule"></div>
+  <section class="cards">
+    <div class="card"><h2>Layout</h2><p>From parts/layout.css, two folders below main.css.</p></div>
+    <div class="card"><h2>Cards</h2><p>From parts/cards.css, imported for screen only.</p></div>
+    <div class="card"><h2>Type</h2><p>From shared/type.css, which imports main.css back.</p></div>
+  </section>
+  <p class="note">A note styled by a sheet that an inline &lt;style&gt; imports.</p>
+</main>
+</body>
+</html>

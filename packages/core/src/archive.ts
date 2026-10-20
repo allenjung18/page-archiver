@@ -14,3 +14,7 @@ export const ARCHIVE_CSP = [
   "media-src data:",
   "frame-src data: about:",
 ].join("; ");
+
+/** Written into every archive's page-archiver:tool-version meta. */
+export const TOOL_NAME = "page-archiver";
+export const TOOL_VERSION = "0.1.0";

@@ -1,0 +1,15 @@
+/* Two levels below the page's sheet: ../../../img is the assets root's img/. */
+@import "../../shared/type.css";
+
+.banner {
+  height: 240px;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 24px;
+  background: url(../../../img/hero.png) center / cover no-repeat;
+  color: #fff;
+}
+.banner h1 {
+  margin: 0 0 16px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}

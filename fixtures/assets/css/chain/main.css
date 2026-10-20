@@ -1,0 +1,15 @@
+/* The top of the chain. Imports resolve against this sheet's URL. */
+@import url("parts/layout.css");
+@import "parts/cards.css" screen;
+
+body {
+  margin: 0;
+  background: #efe9dc url(../../img/paper.png) repeat;
+  font: 17px/1.55 Georgia, "Times New Roman", serif;
+  color: #2a241b;
+}
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px;
+}

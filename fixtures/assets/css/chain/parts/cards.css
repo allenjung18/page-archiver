@@ -1,0 +1,18 @@
+/* Imported with a media condition (screen). */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin: 24px 0;
+}
+.card {
+  padding: 16px;
+  min-height: 160px;
+  background: url("../../../img/lazy-1.png") center / cover;
+  color: #fff;
+  border-radius: 6px;
+}
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}

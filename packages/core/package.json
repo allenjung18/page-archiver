@@ -9,5 +9,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
+  },
+  "dependencies": {
+    "@page-archiver/serializer": "0.0.0",
+    "parse5": "8.0.1",
+    "playwright": "1.61.1",
+    "postcss": "8.5.29"
   }
 }

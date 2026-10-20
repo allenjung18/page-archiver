@@ -33,6 +33,7 @@
     "esbuild": "0.28.2",
     "eslint": "9.39.5",
     "globals": "16.5.0",
+    "happy-dom": "20.14.5",
     "pixelmatch": "7.1.0",
     "pngjs": "7.0.0",
     "typescript": "5.9.3",
