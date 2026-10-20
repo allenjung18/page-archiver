@@ -177,8 +177,10 @@ for (const [name, expected] of Object.entries(ARTICLES)) {
   });
 }
 
-test("pa save -d with extras turned off writes only what is left", async () => {
+test("pa save -d with extras turned off writes only what is left, even over an earlier capture", async () => {
   const dir = test.info().outputPath("capture");
+  await run(process.execPath, [PA, "save", fixtureUrl("news-article"), "-d", dir]);
+  expect(readdirSync(dir).sort()).toEqual(ALL_FILES);
   const { stderr } = await run(process.execPath, [PA, "save", fixtureUrl("plain-article"), "-d", dir, "--no-mhtml", "--no-shot"]);
   expect(stderr).toBe("");
   expect(readdirSync(dir).sort()).toEqual(["archive.html", "meta.json", "reader.html"]);
@@ -186,4 +188,6 @@ test("pa save -d with extras turned off writes only what is left", async () => {
   expect(validateMeta(meta), JSON.stringify(validateMeta.errors)).toBe(true);
   expect(Object.keys(meta.bytes).sort()).toEqual(["archive", "reader"]);
   expect(meta.tags).toEqual([]);
+  expect(meta.url).toBe(fixtureUrl("plain-article"));
+  expect(meta.sha256).toBe(readStamp(readFileSync(join(dir, "archive.html"), "utf8"))["sha256"]);
 });

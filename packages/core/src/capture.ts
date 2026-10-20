@@ -3,7 +3,7 @@
 // and write one self-contained HTML file. With a folder to write to, it also makes the extras
 // (a reader copy, an MHTML copy, a full-page PNG and PDF) and the folder's meta.json.
 import { readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Snapshot } from "@page-archiver/serializer";
@@ -255,9 +255,17 @@ export async function capture(url: string, opts: CaptureOptions = {}): Promise<A
   }
 }
 
-/** Writes a capture's files into dir, meta.json last (its presence means the folder is complete). */
+/** Every file a capture may write into its folder, meta.json last. */
+export const CAPTURE_FILES = [ARCHIVE_FILE, READER_FILE, MHTML_FILE, PNG_FILE, PDF_FILE, META_FILE] as const;
+
+/**
+ * Writes a capture's files into dir, meta.json last (its presence means the folder is complete).
+ * A folder that already holds a capture is overwritten: its meta.json goes first, and any extra
+ * this capture did not make goes too, so nothing of the old capture is left beside the new one.
+ */
 async function writeCapture(dir: string, archive: Archive): Promise<NonNullable<Archive["files"]>> {
   await mkdir(dir, { recursive: true });
+  for (const name of [META_FILE, ...CAPTURE_FILES.filter((f) => f !== META_FILE)]) await rm(join(dir, name), { force: true });
   const files: NonNullable<Archive["files"]> = { archive: join(dir, ARCHIVE_FILE), meta: join(dir, META_FILE) };
   await writeFile(files.archive, archive.html, "utf8");
   if (archive.reader) await writeFile((files.reader = join(dir, READER_FILE)), archive.reader.html, "utf8");

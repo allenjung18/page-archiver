@@ -3,7 +3,8 @@
 // that is as self-contained as the archive itself.
 import { Readability } from "@mozilla/readability";
 import { JSDOM, VirtualConsole } from "jsdom";
-import { allElements, detach, parseDocument, serializeDocument, tokens } from "../dom.ts";
+import type { DefaultTreeAdapterTypes as T } from "parse5";
+import { allElements, detach, getAttr, parseDocument, removeAttr, serializeDocument, setAttr, tokens, type Element } from "../dom.ts";
 import { sanitizeHtml } from "../sanitize.ts";
 
 /** The file name of the reader copy inside a capture's folder. */
@@ -23,13 +24,58 @@ export interface ReaderView {
   textContent: string;
 }
 
-/** Elements Readability would drop anyway, removed before jsdom has to parse their CSS. */
-function stripForReader(html: string): string {
+/** Where an archive image's data: URI stands while Readability works; restored in its output. */
+const IMAGE_TOKEN = "page-archiver-image:";
+/** What Readability's lazy-image fix takes for an image URL in another attribute. */
+const IMAGE_URL = /\.(jpg|jpeg|png|webp)/i;
+const IMAGE_TAGS = new Set(["img", "picture", "figure", "source"]);
+
+/** A shadow root's declarative <template> replaced by its content, so its text is article text. */
+function flattenShadowRoot(template: Element): void {
+  const parent = template.parentNode;
+  if (!parent) return;
+  const kids = (template as T.Template).content.childNodes;
+  for (const k of kids) k.parentNode = parent;
+  parent.childNodes.splice(parent.childNodes.indexOf(template), 1, ...kids);
+}
+
+/**
+ * The archive made ready for Readability: styles gone (jsdom would parse their CSS for nothing),
+ * shadow roots flattened into their hosts, other templates gone, and images made safe from
+ * Readability's lazy-image fix, which would otherwise write a data-src URL over the inlined
+ * src (a network link in the reader copy) or drop a small data: src. Each data: src is swapped
+ * for a token, kept in `images`.
+ */
+function prepareForReader(html: string): { html: string; images: string[] } {
   const doc = parseDocument(html);
+  const images: string[] = [];
   for (const el of allElements(doc)) {
-    if (el.tagName === "style" || el.tagName === "template" || (el.tagName === "link" && tokens(el, "rel").includes("stylesheet"))) detach(el);
+    if (el.tagName === "style" || (el.tagName === "link" && tokens(el, "rel").includes("stylesheet"))) detach(el);
+    else if (el.tagName === "template") {
+      if (getAttr(el, "shadowrootmode") !== null) flattenShadowRoot(el);
+      else detach(el);
+    } else if (IMAGE_TAGS.has(el.tagName)) {
+      for (const a of [...el.attrs]) {
+        if (a.name !== "src" && a.name !== "alt" && IMAGE_URL.test(a.value)) removeAttr(el, a.name);
+      }
+      const cls = getAttr(el, "class");
+      if (cls !== null && /lazy/i.test(cls)) setAttr(el, "class", cls.split(/\s+/).filter((c) => c && !/lazy/i.test(c)).join(" "));
+      const src = getAttr(el, "src");
+      if (src?.startsWith("data:")) {
+        setAttr(el, "src", `${IMAGE_TOKEN}${images.length}`);
+        images.push(src);
+      }
+    }
   }
-  return serializeDocument(doc);
+  return { html: serializeDocument(doc), images };
+}
+
+/** Readability's output with each image token put back as its data: URI. */
+function restoreImages(content: string, images: readonly string[]): string {
+  return content.replace(new RegExp(`${IMAGE_TOKEN}(\\d+)`, "g"), (m, n: string) => {
+    const uri = images[Number(n)];
+    return uri === undefined ? m : uri.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  });
 }
 
 const clean = (s: string | null | undefined): string | null => {
@@ -44,7 +90,8 @@ const clean = (s: string | null | undefined): string | null => {
 export function extractReader(html: string, url: string): ReaderView | null {
   // jsdom never runs the page's scripts or loads its resources unless told to; its console
   // (CSS it cannot parse, and the like) goes nowhere
-  const dom = new JSDOM(stripForReader(html), { url, virtualConsole: new VirtualConsole() });
+  const prepared = prepareForReader(html);
+  const dom = new JSDOM(prepared.html, { url, virtualConsole: new VirtualConsole() });
   try {
     const article = new Readability(dom.window.document).parse();
     if (!article?.content) return null;
@@ -57,7 +104,7 @@ export function extractReader(html: string, url: string): ReaderView | null {
       lang: clean(article.lang),
       dir: clean(article.dir),
       publishedTime: clean(article.publishedTime),
-      content: article.content,
+      content: restoreImages(article.content, prepared.images),
       textContent: (article.textContent ?? "").trim(),
     };
   } finally {

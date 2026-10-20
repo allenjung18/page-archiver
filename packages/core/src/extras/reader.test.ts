@@ -44,6 +44,30 @@ describe("extractReader", () => {
     expect(view.content).toContain(`src="${img}"`);
   });
 
+  it("never lets a lazy-image attribute replace an inlined image, and keeps a small one", () => {
+    const big = "data:image/jpeg;base64," + Buffer.alloc(300, 7).toString("base64");
+    const tiny = "data:image/png;base64," + Buffer.alloc(20, 1).toString("base64");
+    const { html, url } = fixture("plain-article");
+    const page = html
+      .replace(`<img src="${ASSETS}/img/hero.png"`, `<img class="hero lazyloaded" data-src="https://cdn.test/hero.jpg" data-srcset="https://cdn.test/hero.jpg 1x" src="${big}"`)
+      .replace(`<img src="${ASSETS}/img/figure.png"`, `<img alt="ledger.png" src="${tiny}"`)
+      .replace("<blockquote>", `<p><img class="lazy" data-src="https://cdn.test/never-loaded.png" alt="">A lazy image that never loaded.</p><blockquote>`);
+    const view = extractReader(page, url)!;
+    expect(view.content).toContain(`src="${big}"`);
+    expect(view.content).toContain(`src="${tiny}"`);
+    expect(view.content).not.toContain("cdn.test");
+    expect(view.content).not.toContain("page-archiver-image:");
+  });
+
+  it("reads an article that lives in a shadow root", () => {
+    const body = Array.from({ length: 6 }, (_, i) => `<p>Paragraph ${i} of a story told inside a web component, long enough that a reader view should keep it as the article body.</p>`).join("");
+    const html = `<!doctype html><html lang="en"><head><title>Shadow story</title></head><body><nav><a href="/">Home</a></nav><story-card><template shadowrootmode="open"><style>p{color:red}</style><article><h1>Shadow story</h1>${body}</article></template></story-card></body></html>`;
+    const view = extractReader(html, "http://pages.test/shadow.html")!;
+    expect(view.title).toBe("Shadow story");
+    expect(view.textContent).toContain("Paragraph 5 of a story told inside a web component");
+    expect(view.content).not.toContain("color:red");
+  });
+
   it("returns null when there is no article", () => {
     expect(extractReader("<!doctype html><title>t</title><body></body>", "http://pages.test/")).toBeNull();
   });
