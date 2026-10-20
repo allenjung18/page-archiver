@@ -11,7 +11,9 @@
     }
   },
   "dependencies": {
+    "@mozilla/readability": "0.6.0",
     "@page-archiver/serializer": "0.0.0",
+    "jsdom": "30.1.1",
     "parse5": "8.0.1",
     "playwright": "1.61.1",
     "postcss": "8.5.29"

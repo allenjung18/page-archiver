@@ -25,6 +25,7 @@ const count = (hay: string, needle: string | RegExp) => hay.split(needle).length
 
 const FIXTURES: Record<string, Fixture> = {
   "plain-article": {},
+  "news-article": {},
   "lazy-images": {},
   "import-chain": {
     // shared/type.css imports chain/main.css back; browsers drop that import, and so does capture

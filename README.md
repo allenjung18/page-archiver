@@ -9,8 +9,9 @@ browse in a small local web app. Your archive is a folder on your disk; no
 Pocket, no Instapaper, no subscription.
 
 Status: the capture core works from the terminal (`pa save <url> -o <file>`), including
-CSS-in-JS and adopted stylesheets, shadow DOM, canvas, form state, iframes and cookie walls.
-The library, reader view, local UI and extension are not built yet.
+CSS-in-JS and adopted stylesheets, shadow DOM, canvas, form state, iframes and cookie walls,
+and `pa save <url> -d <dir>` adds a reader copy, an MHTML copy, a full-page PNG and PDF, and
+`meta.json`. The library, local UI and extension are not built yet.
 
 ## Saving a page
 
@@ -18,6 +19,25 @@ The library, reader view, local UI and extension are not built yet.
 npm run build
 node packages/cli/dist/index.js save https://example.com/article -o article.html
 ```
+
+Or into a folder, with everything a capture makes:
+
+```
+node packages/cli/dist/index.js save https://example.com/article -d article/ --tag reading
+```
+
+| File | What it is |
+|---|---|
+| `archive.html` | the self-contained page (below) |
+| `reader.html` | the article alone, as [Readability](https://github.com/mozilla/readability) finds it in the archive (images already inlined), in a plain script-free page; light and dark follow the system |
+| `archive.mhtml` | Chromium's own MHTML snapshot of the live page; Chromium opens it directly |
+| `shot.png` | a full-page screenshot at 1280 wide |
+| `shot.pdf` | the page printed to PDF (headless only; `--headed` skips it with a warning) |
+| `meta.json` | id, url, canonicalUrl, title, byline, site, excerpt, lang, capturedAt, bytes per file, the archive's sha256, tags, tool and warnings; its JSON Schema is `META_SCHEMA` in `packages/core/src/meta.ts` |
+
+`--no-reader`, `--no-mhtml`, `--no-shot` (PNG and PDF) and `--no-pdf` leave an extra out.
+An extra that fails is a warning in `meta.json`, never a failed save; `meta.json` is written
+last.
 
 Options: `--profile <dir>` (a persistent Chromium profile, for pages behind a login),
 `--wait-for <selector>` (a client-rendered page's content), `--dismiss <selector>`
@@ -94,7 +114,9 @@ state), then opens the archive in a fresh
 browser context that is offline, with a route that aborts every request except the
 document, served under a CSP that allows only inline styles and `data:` URIs. It asserts
 zero blocked requests, zero CSP violations, and a full-page screenshot within 1% of the
-live page. `test/e2e/offline-harness.spec.ts` proves the harness sees a request, a
+live page. `test/e2e/extras.spec.ts` saves two articles with `-d`, validates `meta.json`
+against its schema, opens the reader copy under the same offline CSP, parses the MHTML
+file's MIME parts and opens it in Chromium offline. `test/e2e/offline-harness.spec.ts` proves the harness sees a request, a
 violation and a script when an archive has one.
 
 ## The SingleFile oracle

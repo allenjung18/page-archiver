@@ -1,5 +1,9 @@
 export { ARCHIVE_CSP, ARCHIVE_FILE, TOOL_NAME, TOOL_VERSION } from "./archive.ts";
-export { capture, type Archive, type CaptureOptions } from "./capture.ts";
+export { capture, documentLang, resolveExtras, type Archive, type CaptureOptions, type Extras } from "./capture.ts";
+export { extractReader, READER_CSS, READER_FILE, renderReader, type ReaderView } from "./extras/reader.ts";
+export { captureMhtml, MHTML_FILE, MhtmlError, parseMhtml, type Mhtml, type MhtmlPart } from "./extras/mhtml.ts";
+export { PDF_FILE, PNG_FILE } from "./extras/shot.ts";
+export { META_FILE, META_SCHEMA, newPageId, normalizeTags, serializeMeta, type PageMeta } from "./meta.ts";
 export { VIEWPORT } from "./browser.ts";
 export { sanitizeHtml } from "./sanitize.ts";
 export { readStamp, verifyStamp } from "./stamp.ts";

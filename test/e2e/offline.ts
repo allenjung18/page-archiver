@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Browser } from "@playwright/test";
+import type { Browser, Page } from "@playwright/test";
 import { ARCHIVE_CSP } from "@page-archiver/core";
 import { VIEWPORT } from "./env.ts";
 
@@ -26,11 +26,12 @@ export interface OfflineOpen {
  * the context is offline, and a route aborts every request except the document. The archive is
  * served under ARCHIVE_CSP, so a reference to the network is also a CSP violation.
  * `csp: false` drops the header, which lets the harness's own spec prove the route side alone.
+ * `inspect` runs against the loaded page before the screenshot.
  */
 export async function openOffline(
   browser: Browser,
   archiveFile: string,
-  opts: { csp?: boolean } = {},
+  opts: { csp?: boolean; inspect?: (page: Page) => Promise<void> } = {},
 ): Promise<OfflineOpen> {
   const body = readFileSync(archiveFile);
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
@@ -68,6 +69,7 @@ export async function openOffline(
       // two frames, so late violation events are dispatched before we read them
       for (let i = 0; i < 2; i++) await new Promise((r) => requestAnimationFrame(() => r(null)));
     });
+    if (opts.inspect) await opts.inspect(page);
     const screenshot = await page.screenshot({ fullPage: true, animations: "disabled", caret: "hide" });
     return { blocked, violations, screenshot };
   } finally {
