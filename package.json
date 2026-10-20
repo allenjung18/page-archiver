@@ -22,6 +22,7 @@
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",
     "oracle": "npm run build && playwright test -c playwright.oracle.config.ts",
+    "smoke": "npm run build && playwright test -c playwright.smoke.config.ts",
     "fixtures": "node fixtures/server.ts",
     "fixtures:images": "node fixtures/make-images.ts",
     "clean": "tsc -b tsconfig.build.json --clean && rm -rf packages/serializer/dist packages/server/dist/ui packages/extension/dist/unpacked test-results playwright-report"
