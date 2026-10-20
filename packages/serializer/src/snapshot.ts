@@ -16,7 +16,11 @@ export interface Snapshot {
   /** location.href at snapshot time (after redirects and client-side routing). */
   url: string;
   title: string;
-  /** Absolute URLs of every resource the frozen document references, deduplicated. */
+  /**
+   * Absolute URLs of the element resources the frozen document references (img, stylesheet and
+   * icon links, video posters), deduplicated. url()s inside CSS and style attributes are found
+   * when core inlines them; CSSOM text and fonts join in chunk 2.
+   */
   manifest: string[];
 }
 

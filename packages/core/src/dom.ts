@@ -8,7 +8,21 @@ export type ParentNode = T.ParentNode;
 export type ChildNode = T.ChildNode;
 
 export const parseDocument = (source: string): Document => parse(source);
-export const serializeDocument = (doc: Document | T.DocumentFragment): string => serialize(doc);
+/**
+ * Serializes doc. parse5 writes every doctype as `<!DOCTYPE name>`, which would switch a
+ * quirks-mode page into standards mode; the public and system ids are written back here.
+ */
+export function serializeDocument(doc: Document | T.DocumentFragment): string {
+  const html = serialize(doc);
+  const dt = doc.childNodes.find((n): n is T.DocumentType => n.nodeName === "#documentType");
+  if (!dt || (!dt.publicId && !dt.systemId)) return html;
+  const short = `<!DOCTYPE ${dt.name}>`;
+  if (!html.startsWith(short)) return html;
+  let full = `<!DOCTYPE ${dt.name}`;
+  if (dt.publicId) full += ` PUBLIC "${dt.publicId}"`;
+  if (dt.systemId) full += `${dt.publicId ? "" : " SYSTEM"} "${dt.systemId}"`;
+  return full + ">" + html.slice(short.length);
+}
 export { parseFragment };
 
 export function isElement(node: T.Node): node is Element {
@@ -84,6 +98,15 @@ export function textOf(el: Element): string {
 export function setText(el: Element, text: string): void {
   for (const n of [...el.childNodes]) detach(n);
   ta.insertText(el, text);
+}
+
+/**
+ * Sets a <style> element's CSS. parse5 writes style text raw, so a `</style` inside the CSS (in a
+ * string or a comment) would end the element and let the rest parse as HTML, a <script> included.
+ * `<\/style` is the same text to CSS (an escaped solidus) and cannot close the element.
+ */
+export function setStyleText(el: Element, css: string): void {
+  setText(el, css.replace(/<\/(style)/gi, "<\\/$1"));
 }
 
 export function findFirst(root: ParentNode, test: (el: Element) => boolean): Element | null {

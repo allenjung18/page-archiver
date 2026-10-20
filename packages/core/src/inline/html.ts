@@ -9,7 +9,7 @@ import {
   removeAttr,
   replaceWith,
   setAttr,
-  setText,
+  setStyleText,
   textOf,
   tokens,
   type Document,
@@ -74,7 +74,7 @@ async function inlineStylesheetLink(link: Element, ctx: HtmlContext): Promise<vo
     const v = getAttr(link, name);
     if (v !== null) setAttr(style, name, v);
   }
-  setText(style, await inlineCss(decodeCss(res.bytes), href, ctx));
+  setStyleText(style, await inlineCss(decodeCss(res.bytes), href, ctx));
   replaceWith(link, style);
 }
 
@@ -116,7 +116,7 @@ export async function inlineDocument(doc: Document, ctx: HtmlContext): Promise<v
         break;
       }
       case "style":
-        jobs.push(inlineCss(textOf(el), ctx.baseUrl, ctx).then((css) => setText(el, css)));
+        jobs.push(inlineCss(textOf(el), ctx.baseUrl, ctx).then((css) => setStyleText(el, css)));
         break;
       case "img":
         removeAttr(el, "srcset");

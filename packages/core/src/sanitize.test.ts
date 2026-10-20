@@ -29,6 +29,11 @@ const ATTRIBUTES: AttrRow[] = [
   ["blockquote", "cite", "javascript:x()", false],
   ["object", "data", "javascript:x()", false],
   ["a", "ping", "https://tracker.example/p", false],
+  // a data: document in a frame or plugin can carry script
+  ["iframe", "src", "data:text/html,<script>alert(1)</script>", false],
+  ["iframe", "src", " DATA:text/html;base64,PHNjcmlwdD4=", false],
+  ["embed", "src", "data:image/svg+xml,<svg onload='x()'/>", false],
+  ["object", "data", "data:text/html;base64,PHNjcmlwdD4=", false],
   // ordinary URLs and everything else stay
   ["a", "href", "https://example.com/page", true],
   ["a", "href", "#section-2", true],
@@ -36,6 +41,9 @@ const ATTRIBUTES: AttrRow[] = [
   ["a", "href", "/relative/page", true],
   ["a", "href", "javascript-guide.html", true],
   ["img", "src", "data:image/png;base64,AAAA", true],
+  ["img", "src", "data:image/svg+xml,<svg/>", true],
+  ["iframe", "src", "https://example.com/embed", true],
+  ["object", "data", "https://example.com/movie.swf", true],
   ["form", "action", "https://example.com/search", true],
   ["div", "class", "on-sale", true],
   ["div", "data-onclick", "x()", true],
@@ -117,6 +125,12 @@ describe("sanitizer: elements", () => {
       expect(allElements(doc).some((e) => getAttr(e, "id") === "keep")).toBe(true);
     });
   }
+
+  it("strips a data: document from a <frame> in a frameset, keeps an ordinary one", () => {
+    const out = sanitizeHtml(`<frameset><frame src="data:text/html,<script>x()</script>"><frame src="https://example.com/nav"></frameset>`);
+    expect(out).not.toContain("data:");
+    expect(out).toContain(`<frame src="https://example.com/nav">`);
+  });
 
   it("removes an SVG <script>", () => {
     expect(sanitizeHtml(`<svg><script>alert(1)</script><circle r="1"/></svg>`)).not.toContain("script");

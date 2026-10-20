@@ -17,6 +17,17 @@ export const URL_ATTRIBUTES = ["href", "src", "action", "formaction", "poster", 
 /** SVG animation attributes that can set a URL attribute to javascript:. */
 const ANIMATION_VALUE_ATTRIBUTES = ["to", "from", "values", "by"] as const;
 
+/**
+ * Elements whose URL attribute loads a whole document: a data: URL there (text/html, SVG…) can
+ * carry script, so it is removed. Frames come back as sanitized srcdoc in a later step.
+ */
+export const DOCUMENT_URL_ATTRIBUTES: Record<string, readonly string[]> = {
+  iframe: ["src"],
+  frame: ["src"],
+  embed: ["src"],
+  object: ["data"],
+};
+
 /** Attributes that make a request on their own, removed always. */
 export const REMOVED_ATTRIBUTES = ["ping"] as const;
 
@@ -58,11 +69,14 @@ export function sanitizeDocument(doc: Document | Element): SanitizeReport {
     }
     const before = el.attrs.length;
     const animates = ["set", "animate"].includes(el.tagName);
+    const documentUrls = DOCUMENT_URL_ATTRIBUTES[el.tagName.toLowerCase()] ?? [];
     el.attrs = el.attrs.filter((a) => {
       const name = attrName(a).toLowerCase();
       if (name.startsWith("on")) return false;
       if ((REMOVED_ATTRIBUTES as readonly string[]).includes(name)) return false;
       if ((URL_ATTRIBUTES as readonly string[]).includes(name) && isScriptUrl(a.value)) return false;
+      // eslint-disable-next-line no-control-regex
+      if (documentUrls.includes(name) && /^data:/i.test(a.value.replace(/[\u0000-\u0020\u007f]/g, ""))) return false;
       if (animates && (ANIMATION_VALUE_ATTRIBUTES as readonly string[]).includes(name) && /(javascript|vbscript):/i.test(a.value.replace(/\s/g, ""))) return false;
       return true;
     });

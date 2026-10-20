@@ -105,6 +105,25 @@ describe("inlineDocument", () => {
   });
 });
 
+describe("inlineDocument: CSS that tries to close its <style>", () => {
+  it("cannot end the <style> early, from a linked sheet or an inline one", async () => {
+    // postcss escapes `</style` in what it prints; a sheet postcss cannot parse is written back
+    // as it came, so that path is the one this guards
+    const parsed = `.a{content:"</style><script>alert(1)</script>"}/* </STYLE><img src=x onerror=y()> */`;
+    const unparseable = `}</StYlE><script>alert(2)</script><img src=x onerror=y()>`;
+    const { out, warnings } = await run(
+      `<link rel="stylesheet" href="http://cdn.test/p.css"><link rel="stylesheet" href="http://cdn.test/u.css"><style>${unparseable.replace("</StYlE>", "")}</style>`,
+      { "http://cdn.test/p.css": parsed, "http://cdn.test/u.css": unparseable },
+    );
+    expect(warnings.filter((w) => /did not parse/.test(w))).toHaveLength(2);
+    const reparsed = parseDocument(out);
+    const tags = allElements(reparsed).map((e) => e.tagName);
+    expect(tags).not.toContain("script");
+    expect(tags).not.toContain("img");
+    expect(tags.filter((t) => t === "style")).toHaveLength(3);
+  });
+});
+
 describe("absoluteLink", () => {
   it("handles the edge cases", () => {
     expect(absoluteLink("", "http://s.test/")).toBe("");

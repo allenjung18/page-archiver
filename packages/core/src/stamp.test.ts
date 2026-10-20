@@ -10,6 +10,23 @@ function stamped(html: string, sourceUrl = "http://site.test/a?x=1&y=2") {
   return finalizeStamp(serializeDocument(doc));
 }
 
+describe("serializeDocument", () => {
+  it("keeps a doctype's public and system ids, so quirks mode survives", () => {
+    for (const dt of [
+      `<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">`, // parse5 lower-cases the name
+      `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">`,
+      `<!DOCTYPE html SYSTEM "about:legacy-compat">`,
+    ]) {
+      const doc = parseDocument(`${dt}<p>x</p>`);
+      const out = serializeDocument(doc);
+      expect(out.startsWith(dt), out.slice(0, 120)).toBe(true);
+      expect(parseDocument(out).mode).toBe(doc.mode);
+    }
+    expect(serializeDocument(parseDocument(`<!doctype html><p>x</p>`)).startsWith("<!DOCTYPE html><html>")).toBe(true);
+    expect(parseDocument(serializeDocument(parseDocument(`<p>no doctype</p>`))).mode).toBe("quirks");
+  });
+});
+
 describe("stamp", () => {
   it("writes charset first, then the page-archiver metas", () => {
     const { html } = stamped(`<!doctype html><html><head><title>t</title><link rel="canonical" href="https://example.com/c"></head><body>b</body></html>`);
