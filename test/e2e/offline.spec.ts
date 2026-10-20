@@ -200,6 +200,26 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html, "no <use> names another file").not.toMatch(/<use\b[^>]*\shref="[^#]/);
     },
   },
+  "svg-effects": {
+    // the paint file that is not there answers HTTP 404
+    warnings: [/\/sprites\/gone\.svg: HTTP 404; set aside$/],
+    withoutCsp: true,
+    check(html) {
+      expect(html, "no SVG attribute's url() names another file").not.toMatch(/\s(filter|mask|clip-path|marker-(start|mid|end)|fill|stroke)="url\((?!#)/);
+      // what the attributes name, and the gradient the mask uses, are copied in once each
+      for (const id of ["soft", "fade", "ramp", "half", "dot", "stripes", "sun"]) {
+        expect(count(html, `id="page-archiver-sprite-0-${id}"`), id).toBe(1);
+      }
+      expect(count(html, 'marker-mid="url(#page-archiver-sprite-0-dot)"')).toBe(1);
+      expect(html).toContain('fill="url(#page-archiver-sprite-0-stripes) #36c"');
+      // the paint that cannot be had is set aside; the fill falls back to its colour, as it did live
+      expect(html).toMatch(/fill="#6b6455" data-page-archiver-unfetched-fill="http:\/\/127\.0\.0\.1:\d+\/sprites\/gone\.svg#paint"/);
+      // the image-set() strings, in the <style> and in the style attribute, are inlined
+      expect(html).toMatch(/[^-]image-set\(url\("data:image\/png;base64,/);
+      expect(html).toMatch(/-webkit-image-set\(url\((?:"|&quot;)data:image\/png;base64,/);
+      expect(html).not.toMatch(/\/img\/(hero|figure)\.png/);
+    },
+  },
   "form-state": {
     check(html) {
       expect(html).toMatch(/<input id="name" type="text" value="Ada Lovelace">/);

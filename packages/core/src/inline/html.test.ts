@@ -102,6 +102,12 @@ describe("inlineDocument", () => {
     expect(getAttr(byId(doc, "d"), "style")).toBe(`background-image: url("${PNG_URI}"); color: red`);
   });
 
+  it("inlines the string arguments of image-set() in style attributes, with no url() in them", async () => {
+    const { doc, requested } = await run(`<div id="d" style="background-image: -webkit-image-set('/a.png' 1x)"></div>`, { "http://site.test/a.png": PNG });
+    expect(getAttr(byId(doc, "d"), "style")).toBe(`background-image: -webkit-image-set(url("${PNG_URI}") 1x)`);
+    expect(requested).toEqual(["http://site.test/a.png"]);
+  });
+
   it("inlines img src and drops srcset, sizes and loading", async () => {
     const { doc } = await run(`<img id="i" src="../a.png" srcset="../a.png 1x" sizes="10px" loading="lazy" alt="a">`, { "http://site.test/a.png": PNG });
     const img = byId(doc, "i");
@@ -378,6 +384,83 @@ describe("inlineDocument: SVG <use> of an external sprite", () => {
         "use http://cdn.test/icons/sprite.svg: names no element of the file; set aside",
         'use http://cdn.test/icons/sprite.svg#zz: the file has no element with id "zz"; set aside',
         "use http://cdn.test/page.html#a: text/html is not an SVG file; set aside",
+      ].sort(),
+    );
+  });
+});
+
+const FX = `<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="g"><stop offset="0" stop-color="#36c"/></linearGradient></defs>
+  <filter id="soft"><feGaussianBlur stdDeviation="2"/></filter>
+  <mask id="fade"><rect width="10" height="10" fill="url(#g)"/></mask>
+  <clipPath id="half"><rect width="5" height="10"/></clipPath>
+  <marker id="arrow" markerWidth="4" markerHeight="4"><path d="M0 0L4 2L0 4z" filter="url(more.svg#glow)" fill="url(http://cdn.test/fx/fx.svg#g)"/></marker>
+  <pattern id="dots" width="4" height="4"><circle cx="2" cy="2" r="1"/></pattern>
+  <rect id="unused" width="2" height="2"/>
+</svg>`;
+const MORE = `<svg xmlns="http://www.w3.org/2000/svg"><filter id="glow"><feGaussianBlur stdDeviation="1"/></filter></svg>`;
+
+describe("inlineDocument: SVG url() attributes that name another file", () => {
+  const files: Files = {
+    "http://cdn.test/fx/fx.svg": { mime: SVG, body: FX },
+    "http://cdn.test/fx/more.svg": { mime: SVG, body: MORE },
+  };
+  const local = (n: number, id: string) => `url(#${SPRITE_ID_PREFIX}${n}-${id})`;
+
+  it("copies the element each one names into the document and points the attribute at the copy", async () => {
+    const { doc, out, warnings } = await run(
+      `<svg><rect id="f" filter="url(http://cdn.test/fx/fx.svg#soft)" mask="url('//cdn.test/fx/fx.svg#fade')" clip-path="url(&quot;http://cdn.test/fx/fx.svg#half&quot;)"/>` +
+        `<path id="m" marker-start="url(http://cdn.test/fx/fx.svg#arrow)" marker-mid="url(http://cdn.test/fx/fx.svg#arrow)" marker-end="url(http://cdn.test/fx/fx.svg#arrow)"/>` +
+        `<rect id="p" fill="url(http://cdn.test/fx/fx.svg#dots) #888" stroke="url(http://cdn.test/fx/fx.svg#g)"/>` +
+        `<rect id="here" fill="url(#own)" filter="url(data:image/svg+xml,x)"/></svg>`,
+      files,
+    );
+    expect(warnings).toEqual([]);
+    expect(out, "no address left that the archive would fetch").not.toContain("cdn.test");
+    const f = byId(doc, "f");
+    expect([getAttr(f, "filter"), getAttr(f, "mask"), getAttr(f, "clip-path")]).toEqual([local(0, "soft"), local(0, "fade"), local(0, "half")]);
+    const m = byId(doc, "m");
+    for (const name of ["marker-start", "marker-mid", "marker-end"]) expect(getAttr(m, name), name).toBe(local(0, "arrow"));
+    expect(getAttr(byId(doc, "p"), "fill"), "the fallback colour is kept").toBe(`${local(0, "dots")} #888`);
+    expect(getAttr(byId(doc, "p"), "stroke")).toBe(local(0, "g"));
+    expect(getAttr(byId(doc, "here"), "fill"), "an in-page reference is left alone").toBe("url(#own)");
+    expect(getAttr(byId(doc, "here"), "filter"), "a data: URL is left alone").toBe("url(data:image/svg+xml,x)");
+    // each copied once, renamed; what a copy refers to comes with it, a reference to a third file too
+    for (const id of ["soft", "fade", "half", "arrow", "dots", "g"]) expect(out.split(`id="${SPRITE_ID_PREFIX}0-${id}"`), id).toHaveLength(2);
+    expect(out).toContain(`<rect width="10" height="10" fill="${local(0, "g")}">`);
+    expect(out).toContain(`filter="${local(1, "glow")}" fill="${local(0, "g")}"`);
+    expect(out).toContain(`<filter id="${SPRITE_ID_PREFIX}1-glow">`);
+    expect(out).not.toContain("unused");
+    expect(out).toContain(`<svg ${SPRITES_ATTRIBUTE}=""`);
+  });
+
+  it("points a reference to the page itself at the page's own element, fetching nothing", async () => {
+    const { doc, requested } = await run(`<svg><rect id="r" fill="url(http://site.test/blog/post.html#grad) red"/></svg>`, files);
+    expect(getAttr(byId(doc, "r"), "fill")).toBe("url(#grad) red");
+    expect(requested).toEqual([]);
+  });
+
+  it("sets aside a reference that cannot be had, with a warning, as the failed reference would render", async () => {
+    const { doc, out, warnings } = await run(
+      `<svg><rect id="gone" fill="url(http://cdn.test/gone.svg#a) #c33" stroke="url(http://cdn.test/gone.svg#b)"/>` +
+        `<rect id="html" filter="url(http://cdn.test/page.html#a)"/>` +
+        `<rect id="none" clip-path="url(http://cdn.test/fx/fx.svg#zz)" marker-end="url(http://cdn.test/fx/fx.svg)"/></svg>`,
+      { ...files, "http://cdn.test/page.html": { mime: "text/html", body: `<svg><filter id="a"></filter></svg>` } },
+    );
+    const aside = (id: string, name: string) => [getAttr(byId(doc, id), name), getAttr(byId(doc, id), `${UNFETCHED_ATTRIBUTE_PREFIX}${name}`)];
+    expect(aside("gone", "fill"), "the fallback colour stays").toEqual(["#c33", "http://cdn.test/gone.svg#a"]);
+    expect(aside("gone", "stroke")).toEqual(["none", "http://cdn.test/gone.svg#b"]);
+    expect(aside("html", "filter")).toEqual(["none", "http://cdn.test/page.html#a"]);
+    expect(aside("none", "clip-path")).toEqual(["none", "http://cdn.test/fx/fx.svg#zz"]);
+    expect(aside("none", "marker-end")).toEqual(["none", "http://cdn.test/fx/fx.svg"]);
+    expect(out).not.toMatch(/="url\(http/);
+    expect(out).not.toContain(SPRITES_ATTRIBUTE);
+    expect(warnings.sort()).toEqual(
+      [
+        'clip-path http://cdn.test/fx/fx.svg#zz: the file has no element with id "zz"; set aside',
+        "filter http://cdn.test/page.html#a: text/html is not an SVG file; set aside",
+        "marker-end http://cdn.test/fx/fx.svg: names no element of the file; set aside",
       ].sort(),
     );
   });

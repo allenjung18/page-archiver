@@ -152,3 +152,33 @@ describe("inlineCss", () => {
     expect(warnings[0]).toMatch(/did not parse/);
   });
 });
+
+describe("image-set() string arguments", () => {
+  it("inlines the string arguments of image-set() and -webkit-image-set(), as url() is inlined", async () => {
+    const { ctx, asked } = site({ "http://s.test/img/a.png": PNG, "http://s.test/img/b.png": PNG });
+    const out = await inlineUrls(
+      `image-set("img/a.png" 1x, 'img/b.png' 2x), -webkit-image-set( "../img/a.png" 1x , url(img/b.png) 2x)`,
+      "http://s.test/css/../",
+      ctx,
+    );
+    expect(out).toBe(
+      `image-set(url("${PNG_URI}") 1x, url("${PNG_URI}") 2x), -webkit-image-set( url("${PNG_URI}") 1x , url("${PNG_URI}") 2x)`,
+    );
+    expect(asked.sort()).toEqual(["http://s.test/img/a.png", "http://s.test/img/a.png", "http://s.test/img/b.png", "http://s.test/img/b.png"]);
+  });
+
+  it("leaves a type() string, a string outside image-set() and a data: string alone; sets a missing one aside", async () => {
+    const { ctx, asked } = site({ "http://s.test/a.avif": PNG });
+    const text = `image-set("a.avif" type("image/avif"), "gone.png" type("image/png")) /* "x.png" */ "y.png" image-set("data:image/png;base64,AA" 1x)`;
+    expect(await inlineUrls(text, "http://s.test/", ctx)).toBe(
+      `image-set(url("${PNG_URI}") type("image/avif"), url("data:,") /* page-archiver unfetched: http://s.test/gone.png */ type("image/png")) /* "x.png" */ "y.png" image-set("data:image/png;base64,AA" 1x)`,
+    );
+    expect(asked.sort()).toEqual(["http://s.test/a.avif", "http://s.test/gone.png"]);
+  });
+
+  it("is inlined in a stylesheet's declarations that hold no url() at all", async () => {
+    const { ctx } = site({ "http://s.test/img/hero.png": PNG });
+    const out = await inlineCss(`.hero { background-image: image-set("../img/hero.png" 1x); }`, "http://s.test/css/site.css", ctx);
+    expect(out).toBe(`.hero { background-image: image-set(url("${PNG_URI}") 1x); }`);
+  });
+});

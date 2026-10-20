@@ -1,7 +1,8 @@
 // The frozen document made self-contained: stylesheets become <style> (via inline/css.ts),
 // images and other resource attributes become data: URIs, an image in an <object> or <embed>
-// becomes an <img>, the symbols an SVG <use> takes from an external sprite are copied into the
-// document, a resource that cannot be had is set aside (UNFETCHED_ATTRIBUTE_PREFIX) so the
+// becomes an <img>, the symbols an SVG <use> takes from an external sprite (and the filters,
+// masks, clip paths, markers and paint servers an SVG attribute's url() names in another file) are
+// copied into the document, a resource that cannot be had is set aside (UNFETCHED_ATTRIBUTE_PREFIX) so the
 // archive never asks the network for it, and links are made absolute so they still lead to the
 // live web from the archive.
 import { utf8 } from "../bytes.ts";
@@ -26,7 +27,7 @@ import {
   type ParentNode,
 } from "../dom.ts";
 import { sanitizeDocument } from "../sanitize.ts";
-import { decodeCss, inlineCss, inlineUrls, type CssContext } from "./css.ts";
+import { decodeCss, hasCssRefs, inlineCss, inlineUrls, resolveCssUrl, urlTokens, type CssContext } from "./css.ts";
 import { effectiveMime, normalizeMime, toDataUri } from "./datauri.ts";
 
 export interface HtmlContext extends CssContext {
@@ -242,6 +243,8 @@ interface Sprite {
 }
 
 interface SpriteState {
+  /** The document's own URL, without its fragment: a url() naming it names the document's own element. */
+  page: string;
   /** By the sprite's URL, without its fragment. */
   sheets: Map<string, Promise<Sprite | null>>;
   /** Per tree (the document, or a shadow root's content): the <defs> copies go into, and the "<n>#<id>"s already in it. */
@@ -391,9 +394,76 @@ async function inlineUse(el: Element, ctx: HtmlContext, state: SpriteState): Pro
   );
 }
 
+/** SVG presentation attributes whose url() names an element: a filter, mask, clip path, marker or paint server. */
+export const SVG_REF_ATTRIBUTES = ["filter", "mask", "clip-path", "marker-start", "marker-mid", "marker-end", "fill", "stroke"] as const;
+
+/** The url() of an in-document reference, quoted when the id needs it. */
+function localRef(id: string): string {
+  return /^[\w-]+$/.test(id) ? `url(#${id})` : `url("#${id.replace(/["\\\n]/g, (c) => (c === "\n" ? "\\a " : `\\${c}`))}")`;
+}
+
+/**
+ * An SVG presentation attribute whose url() names an element in another file (`filter=
+ * "url(fx.svg#blur)"`): the element, and what it refers to, is copied into the document as an
+ * external <use>'s is, and the url() made to point at the copy. A url() naming the page itself
+ * points at the page's own element. One that cannot be had is set aside with a warning: its URL
+ * kept in the attribute's UNFETCHED_ATTRIBUTE_PREFIX one, the attribute left as the failed
+ * reference renders (a fill or stroke's fallback colour, else none).
+ */
+async function inlineSvgRef(el: Element, name: string, value: string, ctx: HtmlContext, state: SpriteState): Promise<void> {
+  const aside: string[] = [];
+  const refs = urlTokens(value);
+  const replacements = await Promise.all(
+    refs.map(async (r): Promise<string | null> => {
+      const written = value.slice(r.index, r.index + r.length);
+      const url = resolveCssUrl(r.raw, ctx.baseUrl);
+      if (!url) return written; // an in-page #id, a data: URL
+      const parts = new URL(url);
+      const id = fragmentId(parts.hash.slice(1));
+      parts.hash = "";
+      const sheetUrl = parts.href;
+      const setAside = (why: string | null) => {
+        if (why) ctx.warn(`${name} ${url}: ${why}; set aside`);
+        aside.push(url);
+        return null;
+      };
+      if (!id) return setAside("names no element of the file");
+      // the document's, not ctx.baseUrl: inside a copy that is the file it came from, whose ids are renamed
+      if (sheetUrl === state.page) return localRef(id);
+      const sprite = await loadSprite(sheetUrl, ctx, state);
+      if (!sprite) return setAside(null); // the resolver has warned
+      if (!sprite.byId) return setAside(`${sprite.mime} is not an SVG file`);
+      if (!sprite.byId.has(id)) return setAside(`the file has no element with id "${id}"`);
+      const copies = copyFromSprite({ ...sprite, byId: sprite.byId }, id, spriteScope(treeOf(el), state));
+      // what the copies refer to is relative to the file's own URL
+      await inlineElements(
+        copies.flatMap((c) => [c, ...allElements(c)]),
+        { ...ctx, baseUrl: sheetUrl },
+        state,
+      );
+      return localRef(spriteId(sprite.n, id));
+    }),
+  );
+  let out = "";
+  let last = 0;
+  refs.forEach((r, i) => {
+    out += value.slice(last, r.index) + (replacements[i] ?? "");
+    last = r.index + r.length;
+  });
+  out += value.slice(last);
+  if (aside.length) {
+    setAttr(el, UNFETCHED_ATTRIBUTE_PREFIX + name, aside.join(" "));
+    // a failed reference: a paint falls back to its colour, and a filter, mask, clip path or marker is none
+    out = (name === "fill" || name === "stroke") && out.trim() ? out.trim() : "none";
+  }
+  setAttr(el, name, out);
+}
+
 /** Inlines every resource doc references and makes its links absolute, in place. */
 export async function inlineDocument(doc: Document, ctx: HtmlContext): Promise<void> {
-  await inlineElements(allElements(doc), ctx, { sheets: new Map(), scopes: new Map() });
+  const page = new URL(ctx.baseUrl);
+  page.hash = "";
+  await inlineElements(allElements(doc), ctx, { page: page.href, sheets: new Map(), scopes: new Map() });
 }
 
 async function inlineElements(elements: readonly Element[], ctx: HtmlContext, sprites: SpriteState): Promise<void> {
@@ -408,10 +478,16 @@ async function inlineElements(elements: readonly Element[], ctx: HtmlContext, sp
       if (v !== null) setAttr(el, name, absoluteLink(v, ctx.baseUrl));
     }
     const style = getAttr(el, "style");
-    if (style !== null && /url\(/i.test(style)) {
+    if (style !== null && hasCssRefs(style)) {
       jobs.push(inlineUrls(style, ctx.baseUrl, ctx).then((v) => setAttr(el, "style", v)));
     }
     if (getAttr(el, "background") !== null) jobs.push(inlineAttr(el, "background", ctx));
+    if (el.namespaceURI === SVG_NAMESPACE) {
+      for (const name of SVG_REF_ATTRIBUTES) {
+        const v = getAttr(el, name);
+        if (v !== null && /url\(/i.test(v)) jobs.push(inlineSvgRef(el, name, v, ctx, sprites));
+      }
+    }
     switch (tag) {
       case "link": {
         const rel = tokens(el, "rel");

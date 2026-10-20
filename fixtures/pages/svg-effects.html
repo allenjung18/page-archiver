@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Effects from other files</title>
+<!-- SVG attributes whose url() names an element in another file (a filter, a mask, a clip path,
+     a marker, a paint server), and image-set() options written as strings. Each is kept (the
+     element is copied into the page, the image inlined) or set aside: the archive asks nothing of
+     the network, even opened from disk with no CSP to refuse it. -->
+<link rel="stylesheet" href="{{ASSETS}}/css/article.css">
+<style>
+  .shapes svg { display: block; width: 600px; height: 120px; }
+  .banner { width: 640px; max-width: 100%; height: 240px; background-image: image-set("{{ASSETS}}/img/hero.png" 1x); background-size: cover; }
+  .figure { width: 320px; height: 180px; margin-top: 24px; background-size: cover; }
+</style>
+</head>
+<body>
+<main>
+  <article>
+    <h1>Effects from other files</h1>
+    <p class="byline">By A. Fixture &middot; 20 October 2026</p>
+    <p>A page's drawings can take their shadows, fades and clips from a shared file of effects.</p>
+    <div class="shapes">
+      <svg viewBox="0 0 600 120">
+        <rect x="20" y="20" width="120" height="80" fill="#36c" filter="url(/sprites/fx.svg#soft)"/>
+        <rect x="170" y="20" width="120" height="80" fill="url(/sprites/fx.svg#stripes) #36c" mask="url(/sprites/fx.svg#fade)"/>
+        <circle cx="380" cy="60" r="40" fill="#c47a2c" clip-path="url('/sprites/fx.svg#half')"/>
+        <path d="M450 100 L500 20 L560 100" fill="none" stroke="url(/sprites/fx.svg#sun) #c47a2c" stroke-width="4"
+              marker-start="url(/sprites/fx.svg#dot)" marker-mid="url(/sprites/fx.svg#dot)" marker-end="url(/sprites/fx.svg#dot)"/>
+        <rect x="20" y="105" width="560" height="10" fill="url(/sprites/gone.svg#paint) #6b6455"/>
+      </svg>
+    </div>
+    <p>An image chosen from a set is written as a string, not a url(), and is kept all the same.</p>
+    <div class="banner"></div>
+    <div class="figure" style="background-image: -webkit-image-set('{{ASSETS}}/img/figure.png' 1x)"></div>
+  </article>
+</main>
+</body>
+</html>

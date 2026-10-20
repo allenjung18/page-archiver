@@ -113,14 +113,15 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
 - `<link rel=stylesheet>` becomes a `<style>` of the sheet inlined by `inlineCss`; an alternate
   stylesheet is dropped with a warning; a sheet that cannot be had stays a `<link>` with no
   `href`, its absolute URL set aside (below).
-- `<style>` text and `style` attributes have their `url()`s inlined (`inlineUrls`).
+- `<style>` text and `style` attributes have their `url()`s, and the string arguments of
+  `image-set()` and `-webkit-image-set()`, inlined (`inlineUrls`).
 - `img src` (with `srcset`, `sizes`, `loading` removed), `input type=image`, `video poster`,
   SVG `<image>`/`<feImage>` `href`, and `background` become `data:` URIs (`inlineAttr`); one that
   cannot be had is set aside and reported.
 - **Set aside** (D-516): a resource the capture cannot have (an HTTP error, a cap) never stays a
   live reference, so no archive asks the network for anything, even opened from disk with no CSP.
-  That holds for `<object>`, `<embed>` and SVG `<use>` too (below): each one's file is inlined or
-  set aside, never left as a URL.
+  That holds for `<object>`, `<embed>`, SVG `<use>` and SVG `url()` attributes too (below): each
+  one's file is inlined or set aside, never left as a URL.
   An attribute moves to `UNFETCHED_ATTRIBUTE_PREFIX` + its name (`data-page-archiver-unfetched-src`)
   with its absolute URL; a `url()` becomes `UNFETCHED_URL` (`url("data:,")`, which fails to load
   as the fetch did) followed by a `/* page-archiver unfetched: <url> */` comment (`unfetchedNote`),
@@ -141,6 +142,13 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   copied, and what the copies refer to is inlined against the sprite's own URL. A sprite is taken
   in the types Chromium takes it in (SVG or XML), and a plain `href` wins over `xlink:href`. A sprite that
   cannot be had, is not SVG, or has no such element is set aside with a warning.
+- **SVG `url()` attributes that name another file** (`inlineSvgRef`, `SVG_REF_ATTRIBUTES`): a
+  `filter`, `mask`, `clip-path`, `marker-start`/`-mid`/`-end`, `fill` or `stroke` of an SVG element
+  whose `url()` names an element in another file (`url(fx.svg#blur)`) has that element copied in
+  as a `<use>`'s is, and the `url()` points at the copy. A `url()` naming the page itself points
+  at the page's own element (`url(#id)`). One that cannot be had is set aside with a warning: its
+  URL in `data-page-archiver-unfetched-<name>`, the attribute left as the failed reference renders
+  (a `fill` or `stroke` keeps its fallback colour, else `none`).
 - Icons: a `<link>` whose `rel` is one of `ICON_RELS` (`icon`, `apple-touch-icon`,
   `apple-touch-icon-precomposed`) is inlined, or removed when it cannot be had.
 - **Video and audio** (`freezeMedia`): media files are not archived. The `src` of a `<video>` or
@@ -154,7 +162,8 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
 
 `inlineCss` (`inline/css.ts`) replaces each `@import` by the imported sheet, wrapped in its
 `layer`/`supports`/media conditions (`parseImport`), recursively up to `MAX_IMPORT_DEPTH` (16),
-with a cycle guard; every `url()` resolves against the sheet's own URL, never the page's
+with a cycle guard; every `url()`, and every string argument of an `image-set()` (`imageSetStrings`;
+never a `type()` string), resolves against the sheet's own URL, never the page's
 (`resolveCssUrl`). An `@import` or `url()` that cannot be had is set aside (above). CSS that does
 not parse keeps its text with `url()`s inlined, and a warning.
 
