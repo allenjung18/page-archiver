@@ -9,7 +9,7 @@ import {
   importHtml,
   META_FILE,
   normalizeTags,
-  readSingleFileHeader,
+  readSavedHeader,
   serializeMeta,
   writeCapture,
   type Archive,
@@ -30,6 +30,22 @@ export interface ImportFileOptions {
   tags?: readonly string[] | undefined;
 }
 
+export interface ImportHtmlOptions extends ImportFileOptions {
+  /** When it was saved, if the HTML does not say. Default: now. */
+  savedAt?: Date | undefined;
+  /** Where the HTML came from, for the import warning (e.g. a file name). */
+  source?: string | undefined;
+}
+
+/** The same bytes of the same URL are in the library already. */
+export class AlreadySavedError extends Error {
+  readonly id: string;
+  constructor(id: string) {
+    super(`already in the library as ${id}`);
+    this.id = id;
+  }
+}
+
 export interface LibraryOptions {
   /** What save() captures with (tests); default core's capture(). */
   capture?: typeof capture | undefined;
@@ -47,6 +63,12 @@ export interface Library {
   save(url: string, opts?: SaveOptions): Promise<{ archive: Archive; page: PageRecord }>;
   /** Imports a saved HTML file (a SingleFile save), as a new version when the URL is known. */
   importFile(file: string, opts?: ImportFileOptions): Promise<PageRecord>;
+  /**
+   * Imports saved HTML from memory: a SingleFile save, or an archive page-archiver made elsewhere
+   * (the Chrome extension's), which keeps its own stamp's URL, time and warnings. Sanitized again
+   * whatever it claims to be.
+   */
+  importHtml(html: string, opts?: ImportHtmlOptions): Promise<{ archive: Archive; page: PageRecord }>;
   list(filters?: Filters): PageRecord[];
   search(query: string, opts?: SearchOptions): SearchHit[];
   /** The page with this id or unique id prefix. */
@@ -94,6 +116,20 @@ export function openLibrary(root: string, options: LibraryOptions = {}): Library
     return findPage(db, archive.meta.id);
   }
 
+  async function importText(html: string, opts: ImportHtmlOptions = {}): Promise<{ archive: Archive; page: PageRecord }> {
+    const header = readSavedHeader(html);
+    const url = opts.url ?? header?.url ?? undefined;
+    const savedAt = header?.savedAt ?? opts.savedAt ?? new Date();
+    const prev = url ? previousVersion(db, url, savedAt.toISOString()) : null;
+    // a new version keeps the tags of the one before it, so `--tag` still finds the page
+    const tags = [...(prev ? findPage(db, prev.id).tags : []), ...(opts.tags ?? [])];
+    const archive = importHtml(html, { url, savedAt, tags, source: opts.source, ...(prev ? { versionOf: prev.id } : {}) });
+    // the same file imported again stamps to the same bytes: it is already here
+    const same = db.prepare("SELECT id FROM pages WHERE url_key = ? AND sha256 = ?").get(urlKey(archive.meta.url), archive.sha256) as { id: string } | undefined;
+    if (same) throw new AlreadySavedError(same.id);
+    return { archive, page: await add(archive) };
+  }
+
   return {
     root,
     db,
@@ -108,18 +144,9 @@ export function openLibrary(root: string, options: LibraryOptions = {}): Library
     },
     async importFile(file, opts = {}) {
       const html = readFileSync(file, "utf8");
-      const header = readSingleFileHeader(html);
-      const url = opts.url ?? header?.url ?? undefined;
-      const savedAt = header?.savedAt ?? statSync(file).mtime;
-      const prev = url ? previousVersion(db, url, savedAt.toISOString()) : null;
-      // a new version keeps the tags of the one before it, so `--tag` still finds the page
-      const tags = [...(prev ? findPage(db, prev.id).tags : []), ...(opts.tags ?? [])];
-      const archive = importHtml(html, { url, savedAt, tags, source: basename(file), ...(prev ? { versionOf: prev.id } : {}) });
-      // the same file imported again stamps to the same bytes: it is already here
-      const same = db.prepare("SELECT id FROM pages WHERE url_key = ? AND sha256 = ?").get(urlKey(archive.meta.url), archive.sha256) as { id: string } | undefined;
-      if (same) throw new Error(`already in the library as ${same.id}`);
-      return add(archive);
+      return (await importText(html, { ...opts, savedAt: statSync(file).mtime, source: basename(file) })).page;
     },
+    importHtml: importText,
     list: (filters) => listPages(db, filters),
     search: (query, opts) => searchPages(db, query, opts),
     get: (id) => findPage(db, id),

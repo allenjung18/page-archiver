@@ -5,6 +5,8 @@
 //   GET    /api/facets             the sites and tags to filter by, with counts
 //   GET    /api/pages/:id          one page and the versions of its URL
 //   POST   /api/save               { url, tags? } capture a URL into the library          (token)
+//                                  { url, html, tags? } add a capture made elsewhere: the Chrome
+//                                  extension's archive of the tab it was shown, sanitized again
 //   POST   /api/pages/:id/recapture  capture the page's URL again, as its next version  (token)
 //   POST   /api/pages/:id/tags     { add?, remove? }                                      (token)
 //   DELETE /api/pages/:id          delete one capture                                     (token)
@@ -20,7 +22,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
-import { QueryError, type Filters, type Library, type PageRecord, type SearchHit } from "@page-archiver/library";
+import { AlreadySavedError, QueryError, type Filters, type Library, type PageRecord, type SearchHit } from "@page-archiver/library";
 import { archiveResponse, isView, VIEWS } from "./serve-archive.ts";
 
 /** Where `vite build` writes the UI: packages/server/dist/ui (the same path from src/ and dist/). */
@@ -69,7 +71,7 @@ export function segments(snippet: string): Segment[] {
 }
 
 class HttpError extends Error {
-  readonly status: 400 | 401 | 403 | 404 | 503;
+  readonly status: 400 | 401 | 403 | 404 | 409 | 503;
   constructor(status: HttpError["status"], message: string) {
     super(message);
     this.status = status;
@@ -181,8 +183,23 @@ export function createApp(opts: AppOptions): Hono {
 
   app.post("/api/save", write, async (c) => {
     const body = await jsonBody(c);
-    const { page, archive } = await lib.save(httpUrl(body["url"]), { tags: stringList(body["tags"], "tags") });
-    return c.json({ page, warnings: archive.warnings }, 201);
+    const url = httpUrl(body["url"]);
+    const tags = stringList(body["tags"], "tags");
+    const html = body["html"];
+    if (html === undefined) {
+      const { page, archive } = await lib.save(url, { tags });
+      return c.json({ page, warnings: archive.warnings }, 201);
+    }
+    // the page as the reader's own browser had it (logins, paywalls): untrusted HTML, which the
+    // import sanitizes again whatever it claims to be
+    if (typeof html !== "string" || !html.trim()) throw new HttpError(400, "html must be the archive's text");
+    try {
+      const { page, archive } = await lib.importHtml(html, { url, tags, source: "the Chrome extension" });
+      return c.json({ page, warnings: archive.warnings }, 201);
+    } catch (err) {
+      if (err instanceof AlreadySavedError) throw new HttpError(409, err.message);
+      throw err;
+    }
   });
 
   app.post("/api/pages/:id/recapture", write, async (c) => {

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ARCHIVE_FILE, importHtml, META_FILE, type CaptureOptions, type PageMeta } from "@page-archiver/core";
 import Database from "better-sqlite3";
 import { DB_FILE } from "./layout.ts";
-import { openLibrary, type Library } from "./library.ts";
+import { AlreadySavedError, openLibrary, type Library } from "./library.ts";
 import { QueryError } from "./search.ts";
 
 /** A SingleFile-style save of a short article. */
@@ -221,6 +221,29 @@ describe("save", () => {
     expect(fresh).toMatchObject({ version: 1, versions: 1, versionOf: null });
     expect(seen[1]?.versionOf).toBeUndefined();
     saver.close();
+  });
+});
+
+describe("importHtml", () => {
+  it("adds an archive page-archiver made elsewhere under its own URL and capture time, once", async () => {
+    // what the Chrome extension posts: a stamped archive, here of a URL the library does not hold
+    const page0 = save({ url: "https://moor.example/heather", title: "Heather on the Moor", body: "The heather turns purple in August.", savedAt: "2026-08-14T06:00:00Z" });
+    // without the SingleFile header, so the only thing that says where it is from is our own stamp
+    const made = importHtml(page0.replace(/<!--[\s\S]*?-->/, ""), { url: "https://moor.example/heather", savedAt: new Date("2026-08-14T06:00:00Z"), reader: false });
+    const { archive, page } = await lib.importHtml(made.html, { tags: ["moor"], source: "the Chrome extension" });
+    expect(page).toMatchObject({ url: "https://moor.example/heather", capturedAt: "2026-08-14T06:00:00.000Z", version: 1, versions: 1, tags: ["moor"] });
+    // its own warnings carried through, and no second "imported" line for this import
+    expect(archive.warnings).toEqual(made.meta.warnings);
+    expect(readFileSync(lib.pathOf(page), "utf8")).toContain("The heather turns purple in August.");
+    await expect(lib.importHtml(made.html)).rejects.toBeInstanceOf(AlreadySavedError);
+    await expect(lib.importHtml(made.html)).rejects.toThrow(`already in the library as ${page.id}`);
+  });
+
+  it("a page the library holds becomes its next version, keeping the tags", async () => {
+    const v1 = lib.search("zanzibarite")[0]!;
+    const made = importHtml(save({ ...ARTICLES[1]!, body: "The zanzibarite shelf, behind a login.", savedAt: "2026-10-20T07:00:00Z" }), { reader: false });
+    const { page } = await lib.importHtml(made.html, { url: v1.url, tags: ["login"] });
+    expect(page).toMatchObject({ version: 2, versionOf: v1.id, tags: ["sea", "login"] });
   });
 });
 

@@ -191,6 +191,36 @@ describe("writes", () => {
   });
 });
 
+describe("save with the archive's html (the Chrome extension)", () => {
+  const made = () => importHtml(save({ url: "https://members.example/notes", title: "Members' Notes", body: "Only for those signed in.", savedAt: "2026-10-20T07:00:00Z" }), { reader: false });
+
+  it("adds it without capturing, sanitized again, and refuses the same bytes twice", async () => {
+    const html = made().html.replace("</body>", '<script>steal()</script><img src="x" onerror="steal()"></body>');
+    const res = await write("POST", "/api/save", { url: "https://members.example/notes", html, tags: ["ext"] });
+    expect(res.status).toBe(201);
+    const { page, warnings } = (await res.json()) as { page: PageRecord; warnings: string[] };
+    expect(page).toMatchObject({ url: "https://members.example/notes", capturedAt: "2026-10-20T07:00:00.000Z", tags: ["ext"], version: 1 });
+    expect(warnings.at(-1)).toMatch(/removed 1 script elements and 1 script attributes/);
+    expect(captured).toEqual([]);
+    const stored = readFileSync(lib.pathOf(lib.get(page.id)), "utf8");
+    expect(stored).toContain("Only for those signed in.");
+    expect(stored).not.toMatch(/<script|onerror|steal/);
+    const again = await write("POST", "/api/save", { url: "https://members.example/notes", html });
+    expect(again.status).toBe(409);
+    expect(await again.json()).toEqual({ error: `already in the library as ${page.id}` });
+  });
+
+  it("needs the token, a URL and html that is text", async () => {
+    const html = made().html;
+    expect((await write("POST", "/api/save", { url: "https://members.example/notes", html }, "wrong")).status).toBe(401);
+    for (const body of [{ html }, { url: "file:///x", html }, { url: "https://a.example/", html: "" }, { url: "https://a.example/", html: "  " }, { url: "https://a.example/", html: 3 }, { url: "https://a.example/", html: null }]) {
+      expect((await write("POST", "/api/save", body)).status, JSON.stringify(body).slice(0, 60)).toBe(400);
+    }
+    expect(lib.list().map((p) => p.url)).not.toContain("https://members.example/notes");
+    expect(captured).toEqual([]);
+  });
+});
+
 describe("the host check", () => {
   it("refuses a request naming another host (a DNS name rebound to 127.0.0.1)", async () => {
     expect((await app.request("http://evil.example:47999/api/pages")).status).toBe(403);
