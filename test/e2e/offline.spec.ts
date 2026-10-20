@@ -16,6 +16,13 @@ const MAX_DIFF = 0.01;
 interface Fixture {
   /** Warnings the fixture is built to raise, in order; any other capture warning fails the test. */
   warnings?: RegExp[];
+  /** The summarized warnings in meta.json and the stamp, when they differ from `warnings`. */
+  summary?: string[];
+  /**
+   * Resources the capture fetched itself because the page never loaded them. Default 0: anything
+   * else is a lazy image the settle step failed to bring into view.
+   */
+  fetched?: number;
   /** What this fixture proves about the archive's HTML, beyond opening offline and looking right. */
   check?: (html: string, archive: Archive) => void;
 }
@@ -102,6 +109,35 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html).toMatch(/<body[^>]* data-consent="rejected"/);
     },
   },
+  media: {
+    // both videos and the audio are set aside, in document order; the videos keep a poster frame
+    warnings: [
+      /^video http:\/\/127\.0\.0\.1:\d+\/media\/still\.webm: media not archived; the poster frame is kept$/,
+      /^video http:\/\/127\.0\.0\.1:\d+\/media\/still\.webm: media not archived; the poster frame is kept$/,
+      /^audio http:\/\/127\.0\.0\.1:\d+\/media\/silence\.ogg: media not archived; nothing of it is kept$/,
+    ],
+    summary: ["3 video or audio files not archived"],
+    check(html) {
+      expect(html).not.toMatch(/<(video|audio|source|track)\b[^>]*\ssrc=/);
+      expect(count(html, "data-page-archiver-src=")).toBe(4);
+      expect(html).not.toContain("data-page-archiver-poster");
+      // each video's poster is the PNG of what it showed, the paused one's poster included
+      expect(count(html, /<video[^>]* poster="data:image\/png;base64,/)).toBe(2);
+      // the playing one keeps the video's own ratio; the paused one never loaded, so has none
+      expect(count(html, "aspect-ratio: 320 / 180")).toBe(1);
+      expect(html).not.toContain("data-page-archiver-ratio");
+    },
+  },
+  "link-hints": {
+    // a browser asks for touch icons only when it wants one, never while the page loads
+    fetched: 2,
+    check(html) {
+      expect(html).not.toContain("compression-dictionary");
+      expect(html).not.toContain("dictionary.bin");
+      expect(html).toMatch(/<link rel="apple-touch-icon-precomposed" sizes="57x57" href="data:image\/png;base64,/);
+      expect(html).toMatch(/<link rel="apple-touch-icon" sizes="180x180" href="data:image\/png;base64,/);
+    },
+  },
   "form-state": {
     check(html) {
       expect(html).toMatch(/<input id="name" type="text" value="Ada Lovelace">/);
@@ -146,7 +182,7 @@ for (const [fixture, spec] of Object.entries(FIXTURES)) {
     expected.forEach((re, i) => expect(archive.warnings[i]).toMatch(re));
     // every byte came from what the page itself loaded: nothing was fetched after the fact (a
     // lazy image the settle step failed to scroll into view would be)
-    expect(archive.stats.fetched, "resources fetched after the fact instead of recorded").toBe(0);
+    expect(archive.stats.fetched, "resources fetched after the fact instead of recorded").toBe(spec.fetched ?? 0);
     expect(archive.stats.recorded, "resources inlined from the recording").toBeGreaterThan(0);
 
     const html = readFileSync(archiveFile, "utf8");
@@ -154,7 +190,8 @@ for (const [fixture, spec] of Object.entries(FIXTURES)) {
     expect(html, "no event-handler attribute survives").not.toMatch(/\son[a-z]+\s*=/i);
     expect(verifyStamp(html), "the sha256 stamp matches the file").toBe(true);
     // the summarized warnings are in the file and in the metadata
-    expect(archive.meta.warnings).toHaveLength(expected.length);
+    if (spec.summary) expect(archive.meta.warnings).toEqual(spec.summary);
+    else expect(archive.meta.warnings).toHaveLength(expected.length);
     expect(archive.meta.bytes.archive).toBe(Buffer.byteLength(html));
     const stamped = readStamp(html)["warnings"];
     expect(stamped === undefined ? [] : JSON.parse(stamped)).toEqual(archive.meta.warnings);

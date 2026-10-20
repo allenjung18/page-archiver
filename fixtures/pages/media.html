@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Colour Bars at Dawn</title>
+<link rel="stylesheet" href="{{ASSETS}}/css/article.css">
+<style>
+  video { display: block; margin: 16px 0; background: #222; }
+</style>
+</head>
+<body>
+<main>
+  <article>
+    <h1>Colour Bars at Dawn</h1>
+    <p class="byline">By A. Fixture &middot; 20 October 2026</p>
+    <p>Video files are not archived. A video keeps the picture the reader saw: this one plays on
+    a loop with no poster, so its archive shows the frame it was on, from a screenshot of the
+    element (the video is on the other origin, so a canvas could not read it).</p>
+    <video id="playing" autoplay muted loop playsinline width="640" height="360" src="{{ASSETS}}/media/still.webm"></video>
+    <p>This one never played. It shows its poster, and so does its archive; its sources are set
+    aside like the first one's.</p>
+    <video id="paused" width="640" height="360" preload="none" poster="{{ASSETS}}/img/figure.png">
+      <source src="{{ASSETS}}/media/still.webm" type="video/webm">
+      <track kind="captions" src="{{ASSETS}}/media/none.vtt" srclang="en">
+    </video>
+    <audio id="sound" preload="none" src="{{ASSETS}}/media/silence.ogg"></audio>
+    <p>An audio element with no controls draws nothing; it is left out of the archive all the same.</p>
+  </article>
+</main>
+</body>
+</html>

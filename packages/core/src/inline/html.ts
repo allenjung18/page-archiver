@@ -6,6 +6,7 @@ import {
   createElement,
   detach,
   getAttr,
+  isElement,
   removeAttr,
   replaceWith,
   setAttr,
@@ -78,6 +79,74 @@ async function inlineStylesheetLink(link: Element, ctx: HtmlContext): Promise<vo
   replaceWith(link, style);
 }
 
+/** <link rel> tokens of an icon the browser fetches for itself: inlined, or dropped when it cannot be had. */
+export const ICON_RELS = ["icon", "apple-touch-icon", "apple-touch-icon-precomposed"] as const;
+
+/**
+ * Where a <video>, <audio>, <source> or <track> keeps the address of its media: video and audio
+ * files are not archived (a capture keeps a video's poster frame, not its stream), and a `src`
+ * left in place would reach the network from the archive.
+ */
+export const MEDIA_SRC_ATTRIBUTE = "data-page-archiver-src";
+
+/**
+ * The picture a <video> showed when the page was captured, a data: PNG set on the live element by
+ * capture() before the snapshot (posters.ts). It becomes the archived video's poster.
+ */
+export const POSTER_FRAME_ATTRIBUTE = "data-page-archiver-poster";
+
+/**
+ * The live video's own aspect ratio ("<videoWidth> / <videoHeight>"), set beside the poster frame.
+ * A screenshot is whole pixels, so its ratio is a little off the video's; the archived video gets
+ * the video's ratio as `aspect-ratio`, so its box is the height it was.
+ */
+export const VIDEO_RATIO_ATTRIBUTE = "data-page-archiver-ratio";
+
+/** Moves a media element's or <source>/<track>'s non-data: src aside; returns the absolute URL moved, or null. */
+function setMediaAside(el: Element, base: string): string | null {
+  const src = getAttr(el, "src");
+  if (src === null) return null;
+  removeAttr(el, "src");
+  const v = src.trim();
+  if (!v) return null;
+  if (/^data:/i.test(v)) {
+    // already inside the file: nothing reaches the network
+    setAttr(el, "src", src);
+    return null;
+  }
+  const url = absoluteLink(v, base);
+  setAttr(el, MEDIA_SRC_ATTRIBUTE, url);
+  return url;
+}
+
+/** A <video> or <audio> made inert: its sources set aside, a video's poster frame made its poster. */
+function freezeMedia(el: Element, ctx: HtmlContext): void {
+  const moved: string[] = [];
+  const own = setMediaAside(el, ctx.baseUrl);
+  if (own) moved.push(own);
+  for (const child of el.childNodes) {
+    if (!isElement(child) || (child.tagName !== "source" && child.tagName !== "track")) continue;
+    const url = setMediaAside(child, ctx.baseUrl);
+    if (url && child.tagName === "source") moved.push(url);
+  }
+  const frame = getAttr(el, POSTER_FRAME_ATTRIBUTE);
+  removeAttr(el, POSTER_FRAME_ATTRIBUTE);
+  // the frame is what the reader saw (a playing video's picture, or the poster it showed)
+  const ratio = getAttr(el, VIDEO_RATIO_ATTRIBUTE);
+  removeAttr(el, VIDEO_RATIO_ATTRIBUTE);
+  if (el.tagName === "video" && frame !== null && /^data:image\/(png|jpeg|webp);base64,/i.test(frame)) {
+    setAttr(el, "poster", frame);
+    if (ratio !== null && /^[1-9]\d{0,5} \/ [1-9]\d{0,5}$/.test(ratio)) {
+      const style = (getAttr(el, "style") ?? "").trim();
+      setAttr(el, "style", `${style}${style && !style.endsWith(";") ? ";" : ""}${style ? " " : ""}aspect-ratio: ${ratio}`);
+    }
+  }
+  if (moved.length) {
+    const keeps = el.tagName === "video" ? (getAttr(el, "poster") ? "the poster frame is kept" : "it has no poster frame") : "nothing of it is kept";
+    ctx.warn(`${el.tagName} ${moved[0]}: media not archived; ${keeps}`);
+  }
+}
+
 const LINK_ATTRIBUTES: Record<string, string[]> = {
   a: ["href"],
   area: ["href"],
@@ -95,6 +164,8 @@ export async function inlineDocument(doc: Document, ctx: HtmlContext): Promise<v
   const jobs: Promise<void>[] = [];
   for (const el of allElements(doc)) {
     const tag = el.tagName;
+    // first: it may add to the style attribute, whose url()s are inlined next
+    if (tag === "video" || tag === "audio") freezeMedia(el, ctx);
     for (const name of LINK_ATTRIBUTES[tag] ?? []) {
       const v = getAttr(el, name);
       if (v !== null) setAttr(el, name, absoluteLink(v, ctx.baseUrl));
@@ -108,7 +179,7 @@ export async function inlineDocument(doc: Document, ctx: HtmlContext): Promise<v
       case "link": {
         const rel = tokens(el, "rel");
         if (rel.includes("stylesheet")) jobs.push(inlineStylesheetLink(el, ctx));
-        else if (rel.includes("icon") || rel.includes("apple-touch-icon")) jobs.push(inlineAttr(el, "href", ctx, true));
+        else if (rel.some((r) => (ICON_RELS as readonly string[]).includes(r))) jobs.push(inlineAttr(el, "href", ctx, true));
         else {
           const href = getAttr(el, "href");
           if (href !== null) setAttr(el, "href", absoluteLink(href, ctx.baseUrl));

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { allElements, getAttr, parseDocument, serializeDocument } from "../dom.ts";
 import type { Resource } from "../resources.ts";
-import { absoluteLink, inlineDocument, type HtmlContext } from "./html.ts";
+import { absoluteLink, inlineDocument, MEDIA_SRC_ATTRIBUTE, POSTER_FRAME_ATTRIBUTE, VIDEO_RATIO_ATTRIBUTE, type HtmlContext } from "./html.ts";
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const PNG_URI = `data:image/png;base64,${PNG.toString("base64")}`;
@@ -83,6 +83,73 @@ describe("inlineDocument", () => {
     expect(getAttr(byId(doc, "v"), "poster")).toBe(PNG_URI);
     expect(getAttr(byId(doc, "in"), "src")).toBe(PNG_URI);
     expect(getAttr(byId(doc, "s"), "href")).toBe(PNG_URI);
+  });
+
+  it("inlines every icon rel the browser fetches, apple-touch-icon-precomposed included", async () => {
+    const files = { "http://site.test/p.png": PNG };
+    const { doc, out } = await run(
+      `<link id="a" rel="apple-touch-icon" href="/p.png"><link id="b" rel="apple-touch-icon-precomposed" sizes="57x57" href="/p.png"><link id="c" rel="apple-touch-icon-precomposed" href="/gone-76.png">`,
+      files,
+    );
+    expect(getAttr(byId(doc, "a"), "href")).toBe(PNG_URI);
+    expect(getAttr(byId(doc, "b"), "href")).toBe(PNG_URI);
+    expect(out).not.toContain("gone-76.png");
+  });
+
+  it("sets video and audio media aside: no src left, the address kept in data-page-archiver-src, one warning per element", async () => {
+    const { doc, out, warnings } = await run(
+      `<video id="v" autoplay muted loop src="/clip.mp4"></video>` +
+        `<video id="w" poster="/missing-poster.png"><source id="s1" src="https://cdn.test/a.webm" type="video/webm"><source id="s2" src="b.mp4"><track id="t" src="/subs.vtt"></video>` +
+        `<audio id="a" src="blob:http://site.test/0b1c"></audio>` +
+        `<video id="d" src="data:video/webm;base64,AAAA"></video><video id="none"></video>`,
+      {},
+    );
+    expect(out).not.toMatch(/\ssrc="(?!data:)/);
+    expect(getAttr(byId(doc, "v"), MEDIA_SRC_ATTRIBUTE)).toBe("http://site.test/clip.mp4");
+    expect(getAttr(byId(doc, "s1"), MEDIA_SRC_ATTRIBUTE)).toBe("https://cdn.test/a.webm");
+    expect(getAttr(byId(doc, "s2"), MEDIA_SRC_ATTRIBUTE)).toBe("http://site.test/blog/b.mp4");
+    expect(getAttr(byId(doc, "t"), MEDIA_SRC_ATTRIBUTE)).toBe("http://site.test/subs.vtt");
+    expect(getAttr(byId(doc, "a"), MEDIA_SRC_ATTRIBUTE)).toBe("blob:http://site.test/0b1c");
+    // a data: source is inside the file already and stays
+    expect(getAttr(byId(doc, "d"), "src")).toBe("data:video/webm;base64,AAAA");
+    expect(warnings).toEqual([
+      "video http://site.test/clip.mp4: media not archived; it has no poster frame",
+      "video https://cdn.test/a.webm: media not archived; the poster frame is kept",
+      "audio blob:http://site.test/0b1c: media not archived; nothing of it is kept",
+      // the poster could not be had: kept as a link, like any image
+    ]);
+    expect(getAttr(byId(doc, "w"), "poster")).toBe("http://site.test/missing-poster.png");
+  });
+
+  it("makes a video's captured frame its poster, over the page's own poster, and only a data: image", async () => {
+    const frame = "data:image/png;base64,iVBORw0KGgo=";
+    const { doc, out } = await run(
+      `<video id="v" src="/clip.mp4" ${POSTER_FRAME_ATTRIBUTE}="${frame}" poster="/p.png"></video>` +
+        `<video id="x" ${POSTER_FRAME_ATTRIBUTE}="https://evil.test/track.png"></video>` +
+        `<audio id="a" ${POSTER_FRAME_ATTRIBUTE}="${frame}"></audio>`,
+      { "http://site.test/p.png": PNG },
+    );
+    expect(getAttr(byId(doc, "v"), "poster")).toBe(frame);
+    expect(getAttr(byId(doc, "x"), "poster")).toBeNull();
+    expect(getAttr(byId(doc, "a"), "poster")).toBeNull();
+    expect(out).not.toContain(POSTER_FRAME_ATTRIBUTE);
+  });
+
+  it("gives a video with a poster frame its own aspect ratio, and only a well-formed one", async () => {
+    const frame = "data:image/png;base64,iVBORw0KGgo=";
+    const { doc, out } = await run(
+      `<video id="a" ${POSTER_FRAME_ATTRIBUTE}="${frame}" ${VIDEO_RATIO_ATTRIBUTE}="444 / 962"></video>` +
+        `<video id="b" style="width:50%;background:url(/p.png)" ${POSTER_FRAME_ATTRIBUTE}="${frame}" ${VIDEO_RATIO_ATTRIBUTE}="16 / 9"></video>` +
+        `<video id="c" ${POSTER_FRAME_ATTRIBUTE}="${frame}" ${VIDEO_RATIO_ATTRIBUTE}="1;background:url(https://x.test/)"></video>` +
+        `<video id="d" ${VIDEO_RATIO_ATTRIBUTE}="16 / 9"></video>`,
+      { "http://site.test/p.png": PNG },
+    );
+    expect(getAttr(byId(doc, "a"), "style")).toBe("aspect-ratio: 444 / 962");
+    expect(getAttr(byId(doc, "b"), "style")).toBe(`width:50%;background:url("${PNG_URI}"); aspect-ratio: 16 / 9`);
+    expect(getAttr(byId(doc, "c"), "style")).toBeNull();
+    // no poster frame, no ratio: the box is whatever the page's CSS makes it
+    expect(getAttr(byId(doc, "d"), "style")).toBeNull();
+    expect(out).not.toContain(VIDEO_RATIO_ATTRIBUTE);
   });
 
   it("makes links absolute against the base URL, leaving in-page anchors alone", async () => {

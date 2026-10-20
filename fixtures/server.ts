@@ -29,6 +29,7 @@ const MIME: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".woff2": "font/woff2",
   ".woff": "font/woff",
+  ".webm": "video/webm",
 };
 
 export interface FixtureServer {

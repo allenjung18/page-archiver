@@ -8,8 +8,23 @@ export const REMOVED_ELEMENTS = ["script", "noscript", "base"] as const;
 /** <meta http-equiv> values removed: the page's own CSP, and timed navigation. */
 export const REMOVED_META_HTTP_EQUIV = ["content-security-policy", "content-security-policy-report-only", "refresh"] as const;
 
-/** <link rel> tokens whose link is removed: hints that fetch, and the web app manifest. */
-export const REMOVED_LINK_RELS = ["preload", "prefetch", "modulepreload", "preconnect", "dns-prefetch", "prerender", "manifest", "serviceworker"] as const;
+/**
+ * <link rel> tokens whose link is removed: hints that fetch, the web app manifest, and
+ * compression dictionaries (Chromium fetches a `compression-dictionary` link as soon as the page
+ * loads; ad scripts insert them).
+ */
+export const REMOVED_LINK_RELS = [
+  "preload",
+  "prefetch",
+  "modulepreload",
+  "preconnect",
+  "dns-prefetch",
+  "prerender",
+  "manifest",
+  "serviceworker",
+  "compression-dictionary",
+  "dictionary",
+] as const;
 
 /** Attributes whose value is a URL that could be javascript:. */
 export const URL_ATTRIBUTES = ["href", "src", "action", "formaction", "poster", "background", "cite", "data", "codebase", "xlink:href"] as const;

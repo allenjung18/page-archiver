@@ -1,4 +1,4 @@
-// The library end to end through the built `pa`: twenty fixture pages (every capture fixture
+// The library end to end through the built `pa`: every fixture page (every capture fixture
 // saved with `pa save`, plus the SingleFile saves in fixtures/import brought in with `pa
 // import`) in a library in the test's own output folder; search, a rebuilt index, versions,
 // tags and `pa open`. Every command names its library, and PA_LIBRARY points there too, so no
@@ -56,12 +56,13 @@ async function pool<T>(items: readonly T[], n: number, job: (item: T) => Promise
   }));
 }
 
-test("a library of 20 fixture pages: search finds a word in one article, and a deleted index rebuilds to the same results", async ({ browser }) => {
+test("a library of every fixture page (20 or more): search finds a word in one article, and a deleted index rebuilds to the same results", async ({ browser }) => {
   test.setTimeout(360_000);
   const lib = test.info().outputPath("library");
   const pages = fixturePages();
   const imports = readdirSync(IMPORT_DIR).filter((f) => f.endsWith(".html")).sort();
-  expect(pages.length + imports.length).toBe(20);
+  const total = pages.length + imports.length;
+  expect(total).toBeGreaterThanOrEqual(20);
 
   await pool(pages, 4, async (name) => {
     const out = await ok(lib, "save", fixtureUrl(name), "--no-mhtml", "--no-shot");
@@ -71,8 +72,8 @@ test("a library of 20 fixture pages: search finds a word in one article, and a d
   expect(imported.trim().split("\n")).toHaveLength(6);
 
   const list = json<PageRecord[]>(await ok(lib, "list", "--json"));
-  expect(list).toHaveLength(20);
-  expect(new Set(list.map((p) => p.url)).size).toBe(20);
+  expect(list).toHaveLength(total);
+  expect(new Set(list.map((p) => p.url)).size).toBe(total);
   for (const p of list) {
     expect(p.dir).toMatch(/^\d{4}\/\d{2}\/[a-z0-9-]+-[0-9a-z]{12}$/);
     expect(p.dir.endsWith(p.id)).toBe(true);
@@ -102,7 +103,7 @@ test("a library of 20 fixture pages: search finds a word in one article, and a d
 
   // delete library.db, reindex, and the same searches give the same results
   rmSync(join(lib, "library.db"));
-  expect(await ok(lib, "reindex")).toBe(`indexed 20 pages in ${lib}\n`);
+  expect(await ok(lib, "reindex")).toBe(`indexed ${total} pages in ${lib}\n`);
   const after: string[] = [];
   for (const [word] of queries) after.push(await ok(lib, "search", word, "--json"));
   expect(after).toEqual(before);

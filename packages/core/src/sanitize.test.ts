@@ -101,6 +101,8 @@ const ELEMENTS: ElementRow[] = [
   [`<link rel="prerender" href="/next.html">`, true],
   [`<link rel="manifest" href="/site.webmanifest">`, true],
   [`<link rel="serviceworker" href="/sw.js">`, true],
+  [`<link rel="compression-dictionary" href="https://ads.example/dict/gpt">`, true],
+  [`<link rel="dictionary" href="/dict">`, true],
   [`<link rel="stylesheet" href="https://cdn.example/site.css">`, false],
   [`<link rel="canonical" href="https://example.com/a">`, false],
   [`<link rel="icon" href="data:image/png;base64,AAAA">`, false],

@@ -22,6 +22,17 @@ describe("summarizeWarnings", () => {
     expect(summarizeWarnings([])).toEqual([]);
   });
 
+  it("counts video and audio left out of the archive on one line", () => {
+    expect(
+      summarizeWarnings([
+        "video https://a.test/clip.mp4: media not archived; the poster frame is kept",
+        "audio https://a.test/song.mp3: media not archived; nothing of it is kept",
+        "video blob:https://a.test/9f2c: media not archived; it has no poster frame",
+      ]),
+    ).toEqual(["3 video or audio files not archived"]);
+    expect(summarizeWarnings(["video https://a.test/v.mp4: media not archived; the poster frame is kept"])).toEqual(["1 video or audio file not archived"]);
+  });
+
   it("warns about a large archive only past the limit", () => {
     expect(sizeWarning(LARGE_ARCHIVE_BYTES)).toBeNull();
     expect(sizeWarning(LARGE_ARCHIVE_BYTES + 1)).toBe("the archive is 50.0 MB (over 50 MB)");

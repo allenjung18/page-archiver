@@ -17,6 +17,7 @@ import { extractReader, READER_FILE, renderReader, type ReaderView } from "./ext
 import { PDF_FILE, PNG_FILE, printPdf, screenshotPng } from "./extras/shot.ts";
 import { MAX_FRAME_DEPTH, snapshotFrames } from "./frames.ts";
 import { META_FILE, newPageId, normalizeTags, serializeMeta, type PageMeta } from "./meta.ts";
+import { capturePosterFrames } from "./posters.ts";
 import { createRecorder, DEFAULT_RESOURCE_CAP, DEFAULT_TOTAL_CAP } from "./recorder.ts";
 import { createResolver } from "./resources.ts";
 import { settle, trackNetwork, type SettleOptions } from "./settle.ts";
@@ -146,6 +147,7 @@ export async function capture(url: string, opts: CaptureOptions = {}): Promise<A
     else if (response.status() >= 400) warnings.push(`the page answered HTTP ${response.status()}`);
     warnings.push(...(await settle(page, network, opts)));
     network.dispose();
+    await capturePosterFrames(page, (m) => warnings.push(m));
 
     const capturedAt = now();
     const script = `(() => { ${bundle}\n; return PageArchiverSerializer.snapshot({}); })()`;
