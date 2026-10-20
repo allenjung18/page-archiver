@@ -218,10 +218,14 @@ Documentation/  Architecture.md (how a capture works), Testing.md, Review.md, Tr
 
 ## Commands
 
+[![CI](https://github.com/allenjung18/page-archiver/actions/workflows/ci.yml/badge.svg)](https://github.com/allenjung18/page-archiver/actions/workflows/ci.yml)
+CI runs lint, typecheck, unit tests and the offline e2e on every push and pull request.
+
 ```
 npm ci
 npx playwright install chromium   # once
 npm run lint
+npm run typecheck                 # tsc for the packages and for tests and fixtures
 npm test                          # unit tests (vitest)
 npm run build                     # tsc for every package, the serializer IIFE, the reader UI (Vite), then a type check of tests and fixtures
 npm run test:e2e                  # build, then Playwright (starts the fixture server itself)

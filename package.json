@@ -19,6 +19,7 @@
   "scripts": {
     "build": "tsc -b tsconfig.build.json && npm run build -w @page-archiver/serializer && npm run build:ui -w @page-archiver/server && npm run build -w @page-archiver/extension && tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc -b tsconfig.build.json && tsc -p tsconfig.json",
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",
     "oracle": "npm run build && playwright test -c playwright.oracle.config.ts",
