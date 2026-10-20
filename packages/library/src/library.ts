@@ -95,7 +95,8 @@ export function openLibrary(root: string, options: LibraryOptions = {}): Library
       // every capture already in the library was taken before this one
       const prev = previousVersion(db, url, LATEST);
       const extras = { reader: true, mhtml: true, png: true, pdf: true, ...opts.extras };
-      const archive = await (options.capture ?? capture)(url, { ...opts, extras, ...(prev ? { versionOf: prev.id } : {}) });
+      const tags = [...(prev ? findPage(db, prev.id).tags : []), ...(opts.tags ?? [])];
+      const archive = await (options.capture ?? capture)(url, { ...opts, extras, tags, ...(prev ? { versionOf: prev.id } : {}) });
       return { archive, page: await add(archive) };
     },
     async importFile(file, opts = {}) {
@@ -104,7 +105,9 @@ export function openLibrary(root: string, options: LibraryOptions = {}): Library
       const url = opts.url ?? header?.url ?? undefined;
       const savedAt = header?.savedAt ?? statSync(file).mtime;
       const prev = url ? previousVersion(db, url, savedAt.toISOString()) : null;
-      const archive = importHtml(html, { url, savedAt, tags: opts.tags, source: basename(file), ...(prev ? { versionOf: prev.id } : {}) });
+      // a new version keeps the tags of the one before it, so `--tag` still finds the page
+      const tags = [...(prev ? findPage(db, prev.id).tags : []), ...(opts.tags ?? [])];
+      const archive = importHtml(html, { url, savedAt, tags, source: basename(file), ...(prev ? { versionOf: prev.id } : {}) });
       // the same file imported again stamps to the same bytes: it is already here
       const same = db.prepare("SELECT id FROM pages WHERE url_key = ? AND sha256 = ?").get(urlKey(archive.meta.url), archive.sha256) as { id: string } | undefined;
       if (same) throw new Error(`already in the library as ${same.id}`);

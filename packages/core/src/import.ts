@@ -65,10 +65,13 @@ export function importHtml(html: string, opts: ImportOptions = {}): Archive {
 
   const doc = parseDocument(html);
   const removed = sanitizeDocument(doc);
-  const warnings = [`imported from ${opts.source ?? "a saved file"}${header ? " (SingleFile)" : ""}`];
-  if (removed.elements || removed.attributes) warnings.push(`removed ${removed.elements} script elements and ${removed.attributes} script attributes`);
+  const origin = header ? " (SingleFile)" : "";
+  const removedNote = removed.elements || removed.attributes ? [`removed ${removed.elements} script elements and ${removed.attributes} script attributes`] : [];
+  // the stamp never names the file, so the same save under another name stamps to the same bytes
+  const stamped = [`imported from a saved file${origin}`, ...removedNote];
+  const warnings = [`imported from ${opts.source ?? "a saved file"}${origin}`, ...removedNote];
   const canonical = canonicalUrl(doc);
-  stamp(doc, { sourceUrl: parsed.href, canonicalUrl: canonical, capturedAt, toolVersion: TOOL_VERSION, warnings });
+  stamp(doc, { sourceUrl: parsed.href, canonicalUrl: canonical, capturedAt, toolVersion: TOOL_VERSION, warnings: stamped });
   const { html: archiveHtml, sha256 } = finalizeStamp(serializeDocument(doc));
 
   let reader: Archive["reader"];

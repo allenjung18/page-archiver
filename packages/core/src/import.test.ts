@@ -40,6 +40,9 @@ describe("importHtml", () => {
       sha256: a.sha256,
     });
     expect(a.meta.warnings[0]).toBe("imported from kelp.html (SingleFile)");
+    // the file's name is in meta.json only: the stamped bytes are the same under any name
+    expect(a.html).not.toContain("kelp.html");
+    expect(importHtml(SAVE, { id: "abcdefabcdef", source: "renamed.html" }).sha256).toBe(a.sha256);
     expect(a.meta.warnings[1]).toMatch(/^removed 1 script elements and 2 script attributes$/);
     expect(a.reader?.html).toContain("Holdfasts grip the rock");
     expect(a.meta.bytes.reader).toBe(Buffer.byteLength(a.reader!.html));

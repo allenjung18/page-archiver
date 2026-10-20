@@ -169,8 +169,17 @@ describe("versions", () => {
     // the numbering survives a rebuild
     lib.reindex();
     expect(lib.get(v2.id)).toMatchObject({ version: 2, versions: 2, versionOf: v1.id });
-    // the same file imported twice is one capture
+    // the same file imported twice is one capture, whatever it is called
     await expect(lib.importFile(join(tmp, "again.html"))).rejects.toThrow(`already in the library as ${v2.id}`);
+    await expect(lib.importFile(file("renamed.html", save(again)))).rejects.toThrow(`already in the library as ${v2.id}`);
+  });
+
+  it("a re-import keeps the tags of the version before it", async () => {
+    const v1 = lib.search("zanzibarite")[0]!;
+    lib.tag(v1.id, ["kelp"]);
+    const v2 = await lib.importFile(file("again.html", save({ ...ARTICLES[1]!, body: "The zanzibarite shelf again.", savedAt: "2026-09-02T09:00:00Z" })), { tags: ["winter"] });
+    expect(v2.tags).toEqual([...v1.tags, "kelp", "winter"]);
+    expect(lib.list({ tags: ["kelp"] }).map((p) => p.id)).toEqual([v2.id]);
   });
 
   it("a second, different save of a URL with the same saved time is still a version of the first", async () => {
@@ -196,13 +205,17 @@ describe("save", () => {
     const saver = openLibrary(lib.root, {
       capture: async (url, opts) => {
         seen.push(opts);
-        return importHtml(save({ ...ARTICLES[2]!, savedAt: "2026-10-01T00:00:00Z" }), { url, versionOf: opts?.versionOf, reader: opts?.extras?.reader });
+        return importHtml(save({ ...ARTICLES[2]!, savedAt: "2026-10-01T00:00:00Z" }), { url, versionOf: opts?.versionOf, reader: opts?.extras?.reader, tags: opts?.tags });
       },
     });
-    const { page } = await saver.save(ARTICLES[2]!.url, { extras: { mhtml: false } });
     const v1 = lib.list({ allVersions: true }).find((p) => p.url === ARTICLES[2]!.url && p.version === 1)!;
+    lib.tag(v1.id, ["bells"]);
+    const { page } = await saver.save(ARTICLES[2]!.url, { extras: { mhtml: false }, tags: ["new"] });
     expect(seen[0]).toMatchObject({ versionOf: v1.id, extras: { reader: true, mhtml: false, png: true, pdf: true } });
     expect(page).toMatchObject({ version: 2, versions: 2, versionOf: v1.id });
+    // the new version keeps version 1's tags, so a tag filter still finds the page
+    expect(page.tags).toEqual(["sea", "bells", "new"]);
+    expect(lib.list({ tags: ["bells"] }).map((p) => p.id)).toEqual([page.id]);
     // a URL the library does not hold is version 1 of 1
     const { page: fresh } = await saver.save("https://new.example/page");
     expect(fresh).toMatchObject({ version: 1, versions: 1, versionOf: null });

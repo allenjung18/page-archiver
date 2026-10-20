@@ -52,6 +52,9 @@ export function parseSaveArgs(argv: string[]): SaveArgs {
   }
   const { values, positionals } = parsed;
   if (positionals.length !== 1) throw new UsageError(`save takes exactly one URL\n${SAVE_USAGE}`);
+  // an empty -d "" or --library "" would quietly fall through to the default library
+  const empty = (["out", "dir", "library", "profile", "wait-for"] as const).find((k) => values[k] === "");
+  if (empty) throw new UsageError(`--${empty} needs a value, not an empty string\n${SAVE_USAGE}`);
   const targets = (["out", "dir", "library"] as const).filter((k) => values[k] !== undefined);
   if (targets.length > 1) throw new UsageError(`save takes one of --library <dir>, -d <dir> and -o <file>, not ${targets.map((t) => `--${t}`).join(" and ")}\n${SAVE_USAGE}`);
   const folderOnly = ["tag", "no-reader", "no-mhtml", "no-shot", "no-pdf"].filter((k) => values[k as keyof typeof values] !== undefined);
@@ -149,11 +152,16 @@ export const LIBRARY_USAGE: Record<LibraryArgs["command"], string> = {
 };
 
 function parse<O extends Record<string, { type: "string" | "boolean"; multiple?: boolean; short?: string }>>(command: LibraryArgs["command"], argv: string[], options: O) {
+  let parsed;
   try {
-    return parseArgs({ args: argv, allowPositionals: true, options });
+    parsed = parseArgs({ args: argv, allowPositionals: true, options });
   } catch (err) {
     throw new UsageError(`${(err as Error).message}\n${LIBRARY_USAGE[command]}`);
   }
+  // an empty --library "" would quietly fall through to $PA_LIBRARY or ~/Archive/pages
+  const empty = Object.entries(parsed.values as Record<string, unknown>).find(([, v]) => v === "");
+  if (empty) throw new UsageError(`--${empty[0]} needs a value, not an empty string\n${LIBRARY_USAGE[command]}`);
+  return parsed;
 }
 
 function filters(command: "list" | "search", values: { [k: string]: string | boolean | string[] | undefined }): FilterArgs {

@@ -44,6 +44,12 @@ describe("parseSaveArgs", () => {
     }
   });
 
+  it("refuses an empty place to write rather than fall through to the default library", () => {
+    for (const flag of ["-o", "-d", "--library", "--profile", "--wait-for"]) {
+      expect(() => parseSaveArgs(["https://a.test/", flag, ""]), flag).toThrow(/needs a value, not an empty string/);
+    }
+  });
+
   it("saves into the library when neither -o nor -d is given", () => {
     expect(parseSaveArgs(["https://a.test/"])).toEqual({ url: "https://a.test/", tags: [], dismiss: [], defaultDismiss: true, headed: false, ...NOTHING_SKIPPED });
     expect(parseSaveArgs(["https://a.test/", "--library", "lib", "--tag", "t", "--no-pdf"])).toMatchObject({ library: "lib", tags: ["t"], skip: { pdf: true } });
@@ -91,6 +97,17 @@ describe("parseLibraryArgs", () => {
       ["import", ["a.html", "--url", "ftp://a.test/"]],
     ] as const) {
       expect(() => parseLibraryArgs(command, [...argv]), `${command} ${argv.join(" ")}`).toThrow(UsageError);
+    }
+    for (const [command, argv] of [
+      ["list", ["--library", ""]],
+      ["search", ["kelp", "--library", ""]],
+      ["tag", ["abcd", "--library", ""]],
+      ["open", ["abcd", "--library", ""]],
+      ["reindex", ["--library", ""]],
+      ["import", ["a.html", "--library", ""]],
+      ["import", ["a.html", "--url", ""]],
+    ] as const) {
+      expect(() => parseLibraryArgs(command, [...argv]), `${command} ${argv.join(" ")}`).toThrow(/needs a value, not an empty string/);
     }
   });
 });
