@@ -27,7 +27,7 @@ import {
   type ParentNode,
 } from "../dom.ts";
 import { sanitizeDocument } from "../sanitize.ts";
-import { decodeCss, hasCssRefs, inlineCss, inlineUrls, resolveCssUrl, urlTokens, type CssContext } from "./css.ts";
+import { decodeCss, hasCssRefs, inlineCss, inlineUrls, resolveCssUrl, UNFETCHED_URL, urlTokens, type CssContext } from "./css.ts";
 import { effectiveMime, normalizeMime, toDataUri } from "./datauri.ts";
 
 export interface HtmlContext extends CssContext {
@@ -464,6 +464,28 @@ async function inlineSvgRef(el: Element, name: string, value: string, ctx: HtmlC
   setAttr(el, name, out);
 }
 
+/** SVG presentation attributes whose url() names an image, not an element: `cursor="url(cur.png) 4 4, auto"`. */
+export const SVG_IMAGE_ATTRIBUTES = ["cursor"] as const;
+
+/**
+ * An SVG_IMAGE_ATTRIBUTES attribute: each url() (and image-set() string) inlined as a data: URI,
+ * as a style attribute's are. One that cannot be had is set aside (the resolver has warned, `; set
+ * aside`): it becomes UNFETCHED_URL, which fails as the fetch did, so the cursor passes to the next
+ * as it did live, and its URL is kept in the attribute's UNFETCHED_ATTRIBUTE_PREFIX one.
+ */
+async function inlineSvgImageAttr(el: Element, name: string, value: string, ctx: HtmlContext): Promise<void> {
+  const aside: Array<{ index: number; url: string }> = [];
+  const out = await inlineUrls(value, ctx.baseUrl, ctx, (url, index) => {
+    aside.push({ index, url });
+    return UNFETCHED_URL;
+  });
+  setAttr(el, name, out);
+  if (aside.length) {
+    aside.sort((a, b) => a.index - b.index);
+    setAttr(el, UNFETCHED_ATTRIBUTE_PREFIX + name, aside.map((a) => a.url).join(" "));
+  }
+}
+
 /** Inlines every resource doc references and makes its links absolute, in place. */
 export async function inlineDocument(doc: Document, ctx: HtmlContext): Promise<void> {
   const page = new URL(ctx.pageUrl ?? ctx.baseUrl, ctx.baseUrl);
@@ -491,6 +513,10 @@ async function inlineElements(elements: readonly Element[], ctx: HtmlContext, sp
       for (const name of SVG_REF_ATTRIBUTES) {
         const v = getAttr(el, name);
         if (v !== null && /url\(/i.test(v)) jobs.push(inlineSvgRef(el, name, v, ctx, sprites));
+      }
+      for (const name of SVG_IMAGE_ATTRIBUTES) {
+        const v = getAttr(el, name);
+        if (v !== null && hasCssRefs(v)) jobs.push(inlineSvgImageAttr(el, name, v, ctx));
       }
     }
     switch (tag) {

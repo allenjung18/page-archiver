@@ -480,6 +480,35 @@ describe("inlineDocument: SVG url() attributes that name another file", () => {
   });
 });
 
+describe("inlineDocument: an SVG cursor attribute", () => {
+  it("inlines each url() image as a data: URI, copying nothing in as an element reference", async () => {
+    const { doc, out, warnings, requested } = await run(
+      `<svg><rect id="c" cursor="url(/cur.png) 4 4, url('http://cdn.test/hand.png'), pointer"/>` +
+        `<g id="s" cursor="-webkit-image-set('/cur.png' 1x), auto"/><g id="own" cursor="url(#c), auto"/></svg>`,
+      { "http://site.test/cur.png": PNG, "http://cdn.test/hand.png": PNG },
+    );
+    expect(getAttr(byId(doc, "c"), "cursor")).toBe(`url("${PNG_URI}") 4 4, url("${PNG_URI}"), pointer`);
+    expect(getAttr(byId(doc, "s"), "cursor")).toBe(`-webkit-image-set(url("${PNG_URI}") 1x), auto`);
+    expect(getAttr(byId(doc, "own"), "cursor"), "an in-page reference is left alone").toBe("url(#c), auto");
+    expect(out, "no address left that the archive would fetch").not.toMatch(/\scursor="[^"]*(cdn\.test|cur\.png)/);
+    expect(out).not.toContain(SPRITES_ATTRIBUTE);
+    expect(out).not.toContain(`${UNFETCHED_ATTRIBUTE_PREFIX}cursor`);
+    expect(requested.sort()).toEqual(["http://cdn.test/hand.png", "http://site.test/cur.png", "http://site.test/cur.png"]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("sets aside an image that cannot be had: the cursor passes to the next, as it did live, and asks nothing of the network", async () => {
+    const { doc, out } = await run(
+      `<svg><rect id="c" cursor="url(http://cdn.test/gone.png) 2 2, url(/cur.png), url(http://cdn.test/also-gone.png), auto"/></svg>`,
+      { "http://site.test/cur.png": PNG },
+    );
+    const c = byId(doc, "c");
+    expect(getAttr(c, "cursor")).toBe(`url("data:,") 2 2, url("${PNG_URI}"), url("data:,"), auto`);
+    expect(getAttr(c, `${UNFETCHED_ATTRIBUTE_PREFIX}cursor`)).toBe("http://cdn.test/gone.png http://cdn.test/also-gone.png");
+    expect(out, "the cursor itself names no address").not.toMatch(/\scursor="[^"]*http/);
+  });
+});
+
 describe("inlineDocument: CSS that tries to close its <style>", () => {
   it("cannot end the <style> early, from a linked sheet or an inline one", async () => {
     // postcss escapes `</style` in what it prints; a sheet postcss cannot parse is written back

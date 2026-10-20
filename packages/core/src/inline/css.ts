@@ -151,9 +151,14 @@ export function imageSetStrings(text: string): CssRef[] {
  * Replaces every url() in a piece of CSS text (a declaration value, a style attribute), and every
  * string argument of an image-set(), with a data: URI of the resource it names. A resource that
  * cannot be had becomes UNFETCHED_URL, followed by a comment with its absolute URL, so the archive
- * still says where it was.
+ * still says where it was; or, given `unfetched`, what that returns for its URL and its place in text.
  */
-export async function inlineUrls(text: string, base: string, ctx: CssContext): Promise<string> {
+export async function inlineUrls(
+  text: string,
+  base: string,
+  ctx: CssContext,
+  unfetched: (url: string, index: number) => string = (url) => `${UNFETCHED_URL} /*${unfetchedNote("", url)}*/`,
+): Promise<string> {
   if (!hasCssRefs(text)) return text;
   const all = [...urlTokens(text), ...(/image-set\(/i.test(text) ? imageSetStrings(text) : [])].sort((a, b) => a.index - b.index);
   // a "url(" written inside an image-set() string is part of that string, not a url() of its own
@@ -167,7 +172,7 @@ export async function inlineUrls(text: string, base: string, ctx: CssContext): P
       const url = resolveCssUrl(r.raw, base);
       if (!url) return text.slice(r.index, r.index + r.length);
       const res = await ctx.get(url);
-      return res ? `url("${toDataUri(res.bytes, res.mime)}")` : `${UNFETCHED_URL} /*${unfetchedNote("", url)}*/`;
+      return res ? `url("${toDataUri(res.bytes, res.mime)}")` : unfetched(url, r.index);
     }),
   );
   let out = "";

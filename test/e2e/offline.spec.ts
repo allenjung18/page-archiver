@@ -201,8 +201,9 @@ const FIXTURES: Record<string, Fixture> = {
     },
   },
   "svg-effects": {
-    // the paint file that is not there answers HTTP 404
-    warnings: [/\/sprites\/gone\.svg: HTTP 404; set aside$/],
+    // the cursor image and the paint file that are not there answer HTTP 404
+    warnings: [/\/sprites\/gone-cursor\.png: HTTP 404; set aside$/, /\/sprites\/gone\.svg: HTTP 404; set aside$/],
+    summary: ["2 resources could not be loaded, set aside"],
     withoutCsp: true,
     check(html) {
       expect(html, "no SVG attribute's url() names another file").not.toMatch(/\s(filter|mask|clip-path|marker-(start|mid|end)|fill|stroke)="url\((?!#)/);
@@ -217,7 +218,11 @@ const FIXTURES: Record<string, Fixture> = {
       // the image-set() strings, in the <style> and in the style attribute, are inlined
       expect(html).toMatch(/[^-]image-set\(url\("data:image\/png;base64,/);
       expect(html).toMatch(/-webkit-image-set\(url\((?:"|&quot;)data:image\/png;base64,/);
-      expect(html).not.toMatch(/\/img\/(hero|figure)\.png/);
+      // the cursor's image is inlined; the one that cannot be had is set aside, and the cursor passes to the next, as it did live
+      expect(html).toMatch(
+        /cursor="url\(&quot;data:,&quot;\) 2 2, url\(&quot;data:image\/png;base64,[^"&]+&quot;\) 4 4, pointer" data-page-archiver-unfetched-cursor="http:\/\/127\.0\.0\.1:\d+\/sprites\/gone-cursor\.png"/,
+      );
+      expect(html).not.toMatch(/\/img\/(hero|figure|paper)\.png/);
     },
   },
   "form-state": {

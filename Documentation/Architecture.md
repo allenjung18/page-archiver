@@ -120,7 +120,7 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   cannot be had is set aside and reported.
 - **Set aside** (D-516): a resource the capture cannot have (an HTTP error, a cap) never stays a
   live reference, so no archive asks the network for anything, even opened from disk with no CSP.
-  That holds for `<object>`, `<embed>`, SVG `<use>` and SVG `url()` attributes too (below): each
+  That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes and an SVG `cursor` too (below): each
   one's file is inlined or set aside, never left as a URL.
   An attribute moves to `UNFETCHED_ATTRIBUTE_PREFIX` + its name (`data-page-archiver-unfetched-src`)
   with its absolute URL; a `url()` becomes `UNFETCHED_URL` (`url("data:,")`, which fails to load
@@ -149,6 +149,11 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   own URL, `pageUrl`, not its `<base>`) points at the page's own element (`url(#id)`). One that cannot be had is set aside with a warning: its
   URL in `data-page-archiver-unfetched-<name>`, the attribute left as the failed reference renders
   (a `fill` or `stroke` keeps its fallback colour, else `none`).
+- **SVG `url()` attributes that name an image** (`inlineSvgImageAttr`, `SVG_IMAGE_ATTRIBUTES`): an
+  SVG element's `cursor` (`url(cur.png) 4 4, auto`) has each `url()` inlined as a `data:` URI, as a
+  `style` attribute's are, never copied in as an element. One that cannot be had becomes
+  `UNFETCHED_URL`, so the cursor passes to the next as it did live, its URL in
+  `data-page-archiver-unfetched-cursor`.
 - Icons: a `<link>` whose `rel` is one of `ICON_RELS` (`icon`, `apple-touch-icon`,
   `apple-touch-icon-precomposed`) is inlined, or removed when it cannot be had.
 - **Video and audio** (`freezeMedia`): media files are not archived. The `src` of a `<video>` or

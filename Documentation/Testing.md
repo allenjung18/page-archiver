@@ -34,8 +34,8 @@ fixtures here. `npm run fixtures` starts it by hand.
 One page per hard case of a capture, in `fixtures/pages/`: adopted sheets, canvas, a cookie
 wall, CSS-in-JS, form state, nested same- and cross-origin iframes, an `@import` chain, lazy images,
 external references (`<object>`, `<embed>` and SVG `<use>` of a sprite file, in
-`fixtures/pages/sprites/`), SVG effects and paints from another file and `image-set()` strings
-(`svg-effects`), link hints (fetch hints and touch icons), video and audio, a news article, a plain article,
+`fixtures/pages/sprites/`), SVG effects and paints from another file, an SVG `cursor` image and
+`image-set()` strings (`svg-effects`), link hints (fetch hints and touch icons), video and audio, a news article, a plain article,
 shadow DOM, a single-page app, `srcset`, resources the site answers with an error
 (`unfetched`), web fonts. `fixtures/import/` holds SingleFile saves for
 `pa import`. The binary assets are generated (`fixtures/make-images.ts`), or made as their
