@@ -16,6 +16,8 @@ and `pa save <url> -d <dir>` adds a reader copy, an MHTML copy, a full-page PNG 
 `pa serve` opens in the browser to read it. The Chrome extension saves the tab you are
 reading, signed in as you are, into the library through `pa serve`.
 
+To try it on your own pages, see [Documentation/TryIt.md](Documentation/TryIt.md).
+
 ## Install
 
 Node 22.18 or newer, then from this folder:
@@ -211,7 +213,7 @@ fixtures/       test pages (one port) and their assets (a second port, cross ori
 test/e2e/       Playwright: capture a fixture, open it offline, compare
 test/oracle/    the same fixtures through SingleFile, for comparison
 test/smoke/     real pages from test/smoke-urls.txt, captured and opened offline
-Documentation/  Architecture.md (how a capture works), Testing.md, Review.md
+Documentation/  Architecture.md (how a capture works), Testing.md, Review.md, TryIt.md
 ```
 
 ## Commands
