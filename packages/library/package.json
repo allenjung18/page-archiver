@@ -11,6 +11,8 @@
     }
   },
   "dependencies": {
-    "@page-archiver/core": "0.0.0"
+    "@page-archiver/core": "0.0.0",
+    "better-sqlite3": "13.0.3",
+    "parse5": "8.0.1"
   }
 }

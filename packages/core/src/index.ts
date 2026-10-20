@@ -1,5 +1,6 @@
 export { ARCHIVE_CSP, ARCHIVE_FILE, TOOL_NAME, TOOL_VERSION } from "./archive.ts";
-export { capture, documentLang, resolveExtras, type Archive, type CaptureOptions, type Extras } from "./capture.ts";
+export { capture, CAPTURE_FILES, documentLang, resolveExtras, writeCapture, type Archive, type CaptureOptions, type Extras } from "./capture.ts";
+export { importHtml, readSingleFileHeader, type ImportOptions, type SingleFileHeader } from "./import.ts";
 export { extractReader, READER_CSS, READER_FILE, renderReader, type ReaderView } from "./extras/reader.ts";
 export { captureMhtml, MHTML_FILE, MhtmlError, parseMhtml, type Mhtml, type MhtmlPart } from "./extras/mhtml.ts";
 export { PDF_FILE, PNG_FILE } from "./extras/shot.ts";

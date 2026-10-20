@@ -1,0 +1,22 @@
+<!DOCTYPE html> <html lang="en"><!--
+ Page saved with SingleFile 
+ url: https://docs.example/guides/http-caching 
+ saved date: Mon Sep 28 2026 11:30:15 GMT-0700 (Pacific Daylight Time)
+--><head><meta charset="utf-8">
+<title>A Short Guide to HTTP Caching | Field Notes for Developers</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta property="og:site_name" content="Field Notes for Developers">
+<meta name="author" content="Mika Torvald">
+<link rel="canonical" href="https://docs.example/guides/http-caching">
+<style>body{font:17px/1.6 Georgia,serif;margin:0;color:#222}header.site,footer{padding:12px 24px;background:#eee}main{max-width:680px;margin:24px auto;padding:0 16px}.byline{color:#666}</style>
+</head><body>
+<header class="site"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxyZWN0IHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiM0NDgiLz48L3N2Zz4=" alt="" width="8" height="8"> Field Notes for Developers · <a href="https://docs.example/">Home</a> · <a href="https://docs.example/subscribe">Subscribe</a></header>
+<main><article>
+<h1>A Short Guide to HTTP Caching</h1>
+<p class="byline">By Mika Torvald</p>
+<p>Caching starts with two questions: may this response be stored, and for how long is it fresh? Cache-Control answers both, and max-age is the number most people need.</p>
+<p>When a stored response goes stale, the client revalidates with an ETag or a date and the server answers 304 if nothing changed. Our team calls a cache that never revalidates a plinkerstash, and they are always a bug.</p>
+<p>Set long lifetimes on fingerprinted assets and short ones on HTML, and most of the rest takes care of itself.</p>
+</article></main>
+<footer>© 2026 Field Notes for Developers · Privacy</footer>
+</body></html>

@@ -11,7 +11,9 @@ Pocket, no Instapaper, no subscription.
 Status: the capture core works from the terminal (`pa save <url> -o <file>`), including
 CSS-in-JS and adopted stylesheets, shadow DOM, canvas, form state, iframes and cookie walls,
 and `pa save <url> -d <dir>` adds a reader copy, an MHTML copy, a full-page PNG and PDF, and
-`meta.json`. The library, local UI and extension are not built yet.
+`meta.json`. `pa save <url>` saves into the library (a folder with a full-text index), which
+`pa list`, `pa search`, `pa tag`, `pa open`, `pa reindex` and `pa import` work on. The local
+UI and the extension are not built yet.
 
 ## Saving a page
 
@@ -75,6 +77,50 @@ What the serializer freezes from the live page, not the HTML source:
 Warnings (resources over a size cap, resources that failed, tainted canvases, frames left
 empty, an archive over 50 MB) are summarized in the archive's `page-archiver:warnings` meta.
 
+## The library
+
+`pa save <url>` with neither `-o` nor `-d` saves into the library: `~/Archive/pages`, or
+`$PA_LIBRARY`, or `--library <dir>` on any library command.
+
+```
+~/Archive/pages/
+  library.db                                   the search index (rebuilt from the folders)
+  2026/10/tides-of-the-inner-basin-0a1b2c3d4e5f/
+    archive.html  reader.html  archive.mhtml  shot.png  shot.pdf  meta.json
+```
+
+Each capture is a folder `YYYY/MM/<slug>-<id>/` (the UTC month it was taken). The folders
+are the record: `library.db` (SQLite, an FTS5 index over title, byline, site and the reader
+copy's text, or the page's visible text when it has no reader copy) holds nothing they do
+not, so deleting it loses nothing: `pa reindex` (or the next command) builds it again.
+
+Saving a URL the library already holds adds a new version beside the old one; captures of
+one URL (its fragment ignored) are numbered 1, 2, … in capture order, and each new capture's
+`meta.json` names the one before it in `versionOf`. `list` and `search` show each page's
+newest version; `--all` shows every version.
+
+```
+pa list [--all] [--site <site>] [--tag <tag>]... [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--limit <n>] [--json]
+pa search <words>... [--raw] [the same filters]
+pa tag <id> [<tag>...] [--remove <tag>]...
+pa open <id> [--reader] [--print]
+pa reindex
+pa import <file.html>... [--url <url>] [--tag <tag>]...
+```
+
+- `search`: every word must match; `word*` matches a prefix, `"two words"` a phrase, and
+  `OR` between words either one. `--raw` passes SQLite FTS5 query syntax through. Each hit
+  shows a snippet with the matched words in `[brackets]`; the title weighs most, then
+  byline and site, then the text. Exit status 1 when nothing matches.
+- `--site` matches the site's name or the URL's host, either without regard to case.
+- An `<id>` can be any unique prefix of 4 characters or more.
+- `tag` writes the tags into the page's `meta.json` first, so they survive a reindex.
+- `open` opens the archive (or `--reader`, the reader copy) in the default browser;
+  `--print` prints its path instead.
+- `import` brings in pages saved by SingleFile: the URL and date from SingleFile's header
+  comment (`--url` when the file has none), scripts and handlers removed, the file stamped,
+  and a reader copy made. Importing the same file twice is refused.
+
 ## Layout
 
 ```
@@ -117,7 +163,12 @@ zero blocked requests, zero CSP violations, and a full-page screenshot within 1%
 live page. `test/e2e/extras.spec.ts` saves two articles with `-d`, validates `meta.json`
 against its schema, opens the reader copy under the same offline CSP, parses the MHTML
 file's MIME parts and opens it in Chromium offline. `test/e2e/offline-harness.spec.ts` proves the harness sees a request, a
-violation and a script when an archive has one.
+violation and a script when an archive has one. `test/e2e/library.spec.ts` builds a library of
+20 fixture pages in the test's output folder (every page in `fixtures/pages/` saved with
+`pa save`, plus the SingleFile-style saves in `fixtures/import/` brought in with `pa
+import`), searches it for words that appear in one article only, deletes `library.db`,
+reindexes and checks the same searches return the same results, and saves a page twice to
+check version 1 is kept beside version 2.
 
 ## The SingleFile oracle
 

@@ -25,8 +25,8 @@ test("pa save <url> -o <file> writes a stamped, script-free archive", async () =
   expect(html).toContain(`href="https://example.com/archive/ledger"`);
 });
 
-test("pa save without -o is a usage error", async () => {
-  const err = await run(process.execPath, [PA, "save", fixtureUrl("plain-article")]).catch((e: { code: number; stderr: string }) => e);
+test("pa save with two places to write is a usage error", async () => {
+  const err = await run(process.execPath, [PA, "save", fixtureUrl("plain-article"), "-o", "a.html", "-d", "dir"]).catch((e: { code: number; stderr: string }) => e);
   expect(err).toMatchObject({ code: 2 });
-  expect((err as { stderr: string }).stderr).toMatch(/-o <file>/);
+  expect((err as { stderr: string }).stderr).toMatch(/not --out and --dir/);
 });

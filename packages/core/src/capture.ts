@@ -263,7 +263,7 @@ export const CAPTURE_FILES = [ARCHIVE_FILE, READER_FILE, MHTML_FILE, PNG_FILE, P
  * A folder that already holds a capture is overwritten: its meta.json goes first, and any extra
  * this capture did not make goes too, so nothing of the old capture is left beside the new one.
  */
-async function writeCapture(dir: string, archive: Archive): Promise<NonNullable<Archive["files"]>> {
+export async function writeCapture(dir: string, archive: Archive): Promise<NonNullable<Archive["files"]>> {
   await mkdir(dir, { recursive: true });
   for (const name of [META_FILE, ...CAPTURE_FILES.filter((f) => f !== META_FILE)]) await rm(join(dir, name), { force: true });
   const files: NonNullable<Archive["files"]> = { archive: join(dir, ARCHIVE_FILE), meta: join(dir, META_FILE) };

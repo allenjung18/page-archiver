@@ -1,0 +1,258 @@
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { ARCHIVE_FILE, importHtml, META_FILE, type CaptureOptions, type PageMeta } from "@page-archiver/core";
+import Database from "better-sqlite3";
+import { DB_FILE } from "./layout.ts";
+import { openLibrary, type Library } from "./library.ts";
+import { QueryError } from "./search.ts";
+
+/** A SingleFile-style save of a short article. */
+function save(opts: { url: string; title: string; site?: string; body: string; savedAt: string }): string {
+  const site = opts.site ? `<meta property="og:site_name" content="${opts.site}">` : "";
+  const paragraphs = [opts.body, "The rest of the article is ordinary prose about the weather, the tides and the harbour, long enough that a reader view finds it worth keeping as the main text."]
+    .map((p) => `<p>${p}</p>`)
+    .join("\n");
+  return `<!DOCTYPE html><html lang="en"><!--
+ Page saved with SingleFile
+ url: ${opts.url}
+ saved date: ${opts.savedAt}
+--><head><meta charset="utf-8"><title>${opts.title}</title>${site}</head>
+<body><nav>Home · About</nav><article><h1>${opts.title}</h1>${paragraphs}</article></body></html>`;
+}
+
+let tmp: string;
+let lib: Library;
+
+function file(name: string, html: string): string {
+  const p = join(tmp, name);
+  writeFileSync(p, html);
+  return p;
+}
+
+const ARTICLES = [
+  { url: "https://gazette.example/tides", title: "Tides of the Inner Basin", site: "The Harbour Gazette", body: "The basin floods twice a day and the quayside cafés move their chairs.", savedAt: "2026-03-12T10:00:00Z" },
+  { url: "https://blog.example/kelp", title: "Kelp in Winter", body: "Holdfasts grip the rock; the zanzibarite shelf is where the urchins gather.", savedAt: "2026-05-01T08:30:00Z" },
+  { url: "https://notes.example/bells", title: "The Fog Bell", body: "No ships. Fog. I rang the bell all night, said the keeper's ledger.", savedAt: "2026-07-20T22:15:00Z" },
+];
+
+beforeEach(async () => {
+  tmp = mkdtempSync(join(tmpdir(), "pa-library-"));
+  lib = openLibrary(join(tmp, "lib"));
+  for (const [i, a] of ARTICLES.entries()) await lib.importFile(file(`a${i}.html`, save(a)), { tags: i === 0 ? ["sea", "news"] : ["sea"] });
+});
+
+afterEach(() => {
+  lib.close();
+  rmSync(tmp, { recursive: true, force: true });
+});
+
+describe("the library folder", () => {
+  it("writes each capture to YYYY/MM/<slug>-<id>/ with meta.json and the archive", () => {
+    const pages = lib.list();
+    expect(pages.map((p) => p.dir)).toEqual([
+      expect.stringMatching(/^2026\/07\/the-fog-bell-[0-9a-z]{12}$/),
+      expect.stringMatching(/^2026\/05\/kelp-in-winter-[0-9a-z]{12}$/),
+      expect.stringMatching(/^2026\/03\/tides-of-the-inner-basin-[0-9a-z]{12}$/),
+    ]);
+    for (const p of pages) {
+      expect(p.dir.endsWith(p.id)).toBe(true);
+      expect(existsSync(lib.pathOf(p))).toBe(true);
+      const meta = JSON.parse(readFileSync(lib.pathOf(p, META_FILE), "utf8")) as PageMeta;
+      expect(meta.id).toBe(p.id);
+    }
+  });
+});
+
+describe("search", () => {
+  it("finds a word that appears in only one article, with the hit marked", () => {
+    const hits = lib.search("zanzibarite");
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ title: "Kelp in Winter", url: "https://blog.example/kelp", version: 1, versions: 1 });
+    expect(hits[0]!.snippet).toContain("[zanzibarite]");
+    // not in the page furniture: the nav is not the article
+    expect(lib.search("Home")).toHaveLength(0);
+  });
+
+  it("matches words, prefixes, phrases, either-or, titles and sites", () => {
+    expect(lib.search("fog bell").map((h) => h.title)).toEqual(["The Fog Bell"]);
+    expect(lib.search("zanzib*").map((h) => h.title)).toEqual(["Kelp in Winter"]);
+    expect(lib.search('"rang the bell"').map((h) => h.title)).toEqual(["The Fog Bell"]);
+    expect(lib.search('"bell rang"')).toHaveLength(0);
+    expect(lib.search("urchins OR quayside").map((h) => h.title).sort()).toEqual(["Kelp in Winter", "Tides of the Inner Basin"]);
+    expect(lib.search("Gazette").map((h) => h.title)).toEqual(["Tides of the Inner Basin"]);
+    expect(lib.search("cafes").map((h) => h.title)).toEqual(["Tides of the Inner Basin"]); // diacritics folded
+    // a word in the title ranks that page first
+    expect(lib.search("tides")[0]!.title).toBe("Tides of the Inner Basin");
+  });
+
+  it("never turns punctuation into an FTS5 syntax error", () => {
+    for (const q of ["keeper's", "C++", 'a "b', "(", "OR", "-", "a AND", "*"]) {
+      try {
+        lib.search(q);
+      } catch (err) {
+        expect(err, q).toBeInstanceOf(QueryError);
+      }
+    }
+    expect(lib.search("keeper's").map((h) => h.title)).toEqual(["The Fog Bell"]);
+    expect(() => lib.search("NEAR(", { raw: true })).toThrow(QueryError);
+  });
+
+  it("filters by site, tag and date", () => {
+    expect(lib.search("the", { site: "the harbour gazette" }).map((h) => h.title)).toEqual(["Tides of the Inner Basin"]);
+    expect(lib.search("the", { site: "BLOG.example" }).map((h) => h.title)).toEqual(["Kelp in Winter"]);
+    expect(lib.search("the", { tags: ["news"] }).map((h) => h.title)).toEqual(["Tides of the Inner Basin"]);
+    expect(lib.search("the", { tags: ["sea", "news"] })).toHaveLength(1);
+    expect(lib.search("the", { tags: ["sea"] })).toHaveLength(3);
+    expect(lib.list({ since: "2026-05-01" }).map((p) => p.title)).toEqual(["The Fog Bell", "Kelp in Winter"]);
+    expect(lib.list({ until: "2026-05-01" }).map((p) => p.title)).toEqual(["Kelp in Winter", "Tides of the Inner Basin"]);
+    expect(lib.list({ since: "2026-04-01", until: "2026-06-30" }).map((p) => p.title)).toEqual(["Kelp in Winter"]);
+    expect(lib.list({ limit: 1 })).toHaveLength(1);
+    expect(() => lib.list({ since: "May 2026" })).toThrow(QueryError);
+  });
+});
+
+describe("reindex", () => {
+  it("rebuilds the same index from the folders after library.db is deleted", async () => {
+    const queries = ["zanzibarite", "the", "bell OR tides", "sea"];
+    const before = { list: lib.list({ allVersions: true }), hits: queries.map((q) => lib.search(q)) };
+    lib.close();
+    rmSync(join(lib.root, DB_FILE));
+    // `pa reindex` on a library whose index is gone
+    lib = openLibrary(lib.root);
+    expect(lib.reindex()).toEqual({ indexed: 3, skipped: [] });
+    expect({ list: lib.list({ allVersions: true }), hits: queries.map((q) => lib.search(q)) }).toEqual(before);
+    expect(before.hits[0]).toHaveLength(1);
+  });
+
+  it("builds a missing index on open", () => {
+    const pages = lib.list();
+    lib.close();
+    rmSync(join(lib.root, DB_FILE));
+    lib = openLibrary(lib.root);
+    expect(existsSync(join(lib.root, DB_FILE))).toBe(true);
+    expect(lib.list()).toEqual(pages);
+  });
+
+  it("passes over unfinished and broken folders, and says which", () => {
+    // a capture that died before meta.json, and one whose meta.json is not JSON
+    mkdirSync(join(lib.root, "2026/08/half-done-aaaaaaaaaaaa"), { recursive: true });
+    writeFileSync(join(lib.root, "2026/08/half-done-aaaaaaaaaaaa", ARCHIVE_FILE), "<p>x");
+    mkdirSync(join(lib.root, "2026/08/broken-bbbbbbbbbbbb"), { recursive: true });
+    writeFileSync(join(lib.root, "2026/08/broken-bbbbbbbbbbbb", META_FILE), "{ not json");
+    const report = lib.reindex();
+    expect(report.indexed).toBe(3);
+    expect(report.skipped.map((s) => s.dir)).toEqual(["2026/08/broken-bbbbbbbbbbbb", "2026/08/half-done-aaaaaaaaaaaa"]);
+    expect(report.skipped[1]!.reason).toMatch(/no meta\.json/);
+  });
+});
+
+describe("versions", () => {
+  it("re-saving a URL adds version 2 and keeps version 1", async () => {
+    const v1 = lib.search("zanzibarite")[0]!;
+    const v1Archive = readFileSync(lib.pathOf(v1), "utf8");
+    const again = { ...ARTICLES[1]!, body: "Holdfasts grip the rock; the zanzibarite shelf is quieter this year.", savedAt: "2026-09-02T09:00:00Z" };
+    const v2 = await lib.importFile(file("again.html", save(again)));
+    expect(v2.dir).toMatch(/^2026\/09\/kelp-in-winter-/);
+    expect(v2).toMatchObject({ version: 2, versions: 2, versionOf: v1.id, url: v1.url });
+    expect(v2.dir).not.toBe(v1.dir);
+    // version 1 is still on disk, unchanged, and still indexed
+    expect(readFileSync(lib.pathOf(v1), "utf8")).toBe(v1Archive);
+    expect(lib.get(v1.id)).toMatchObject({ version: 1, versions: 2 });
+    expect(lib.versions(v1.url).map((v) => [v.id, v.version])).toEqual([[v1.id, 1], [v2.id, 2]]);
+    // list and search show the newest version; --all shows both
+    expect(lib.list().filter((p) => p.url === v1.url).map((p) => p.id)).toEqual([v2.id]);
+    expect(lib.list({ allVersions: true }).filter((p) => p.url === v1.url).map((p) => p.version)).toEqual([2, 1]);
+    expect(lib.search("zanzibarite").map((h) => h.id)).toEqual([v2.id]);
+    expect(lib.search("zanzibarite", { allVersions: true }).map((h) => h.id).sort()).toEqual([v1.id, v2.id].sort());
+    // the numbering survives a rebuild
+    lib.reindex();
+    expect(lib.get(v2.id)).toMatchObject({ version: 2, versions: 2, versionOf: v1.id });
+    // the same file imported twice is one capture
+    await expect(lib.importFile(join(tmp, "again.html"))).rejects.toThrow(`already in the library as ${v2.id}`);
+  });
+
+  it("a second, different save of a URL with the same saved time is still a version of the first", async () => {
+    const first = lib.search("zanzibarite")[0]!;
+    const twin = await lib.importFile(file("twin.html", save({ ...ARTICLES[1]!, body: "A different body about the zanzibarite shelf." })));
+    expect(twin.capturedAt).toBe(first.capturedAt);
+    expect(twin.versionOf).toBe(first.id);
+    expect(twin.versions).toBe(2);
+  });
+
+  it("an older save of a URL slots in before the newer one", async () => {
+    const older = { ...ARTICLES[2]!, savedAt: "2026-01-05T12:00:00Z", body: "An older entry about the bell." };
+    const page = await lib.importFile(file("older.html", save(older)));
+    expect(page).toMatchObject({ version: 1, versions: 2 });
+    expect(page.versionOf).toBeNull();
+  });
+});
+
+describe("save", () => {
+  it("captures a URL the library holds as its next version", async () => {
+    const seen: Array<CaptureOptions | undefined> = [];
+    // a second handle on the same library, capturing with a stand-in for Chromium
+    const saver = openLibrary(lib.root, {
+      capture: async (url, opts) => {
+        seen.push(opts);
+        return importHtml(save({ ...ARTICLES[2]!, savedAt: "2026-10-01T00:00:00Z" }), { url, versionOf: opts?.versionOf, reader: opts?.extras?.reader });
+      },
+    });
+    const { page } = await saver.save(ARTICLES[2]!.url, { extras: { mhtml: false } });
+    const v1 = lib.list({ allVersions: true }).find((p) => p.url === ARTICLES[2]!.url && p.version === 1)!;
+    expect(seen[0]).toMatchObject({ versionOf: v1.id, extras: { reader: true, mhtml: false, png: true, pdf: true } });
+    expect(page).toMatchObject({ version: 2, versions: 2, versionOf: v1.id });
+    // a URL the library does not hold is version 1 of 1
+    const { page: fresh } = await saver.save("https://new.example/page");
+    expect(fresh).toMatchObject({ version: 1, versions: 1, versionOf: null });
+    expect(seen[1]?.versionOf).toBeUndefined();
+    saver.close();
+  });
+});
+
+describe("the index file", () => {
+  it("is rebuilt when it is not a database, or of another schema version", () => {
+    const pages = lib.list();
+    lib.close();
+    writeFileSync(join(lib.root, DB_FILE), "this is not sqlite");
+    lib = openLibrary(lib.root);
+    expect(lib.list()).toEqual(pages);
+    lib.db.pragma("user_version = 99");
+    lib.db.exec("DELETE FROM pages");
+    lib.close();
+    lib = openLibrary(lib.root);
+    expect(lib.list()).toEqual(pages);
+  });
+
+  it("can be rebuilt while another handle has it open", async () => {
+    const other = openLibrary(lib.root);
+    await lib.importFile(file("new.html", save({ url: "https://x.example/n", title: "Late Arrival", body: "A quorbleflint arrives.", savedAt: "2026-08-01T00:00:00Z" })));
+    expect(other.reindex().indexed).toBe(4);
+    expect(lib.search("quorbleflint")).toHaveLength(1);
+    expect(other.search("quorbleflint")).toHaveLength(1);
+    // the rebuilt index is a plain SQLite file another tool can read
+    other.close();
+    const raw = new Database(join(lib.root, DB_FILE), { readonly: true });
+    expect(raw.prepare("SELECT count(*) AS n FROM pages").get()).toEqual({ n: 4 });
+    raw.close();
+  });
+});
+
+describe("tags", () => {
+  it("writes tags to meta.json, so they survive a rebuild", () => {
+    const page = lib.search("zanzibarite")[0]!;
+    expect(lib.tag(page.id.slice(0, 5), ["kelp", "to-read", "kelp"], ["sea"]).tags).toEqual(["kelp", "to-read"]);
+    expect((JSON.parse(readFileSync(lib.pathOf(page, META_FILE), "utf8")) as PageMeta).tags).toEqual(["kelp", "to-read"]);
+    lib.reindex();
+    expect(lib.list({ tags: ["to-read"] }).map((p) => p.id)).toEqual([page.id]);
+    expect(lib.tag(page.id, [], ["to-read"]).tags).toEqual(["kelp"]);
+  });
+
+  it("finds pages by unique id prefix and refuses an unknown or ambiguous one", () => {
+    const [p] = lib.list();
+    expect(lib.get(p!.id.slice(0, 6)).id).toBe(p!.id);
+    expect(() => lib.get("zzzzzzzz")).toThrow(/no page/);
+    expect(() => lib.get("ab")).toThrow(/not a page id/);
+  });
+});
