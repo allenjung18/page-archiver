@@ -167,3 +167,31 @@ export function findPage(db: Database.Database, idOrPrefix: string): PageRecord 
   if (rows.length > 1) throw new QueryError(`more than one page id starts with ${idOrPrefix}`);
   return toRecord(rows[0]!);
 }
+
+export interface Facet {
+  name: string;
+  count: number;
+}
+
+export interface Facets {
+  sites: Facet[];
+  tags: Facet[];
+}
+
+/** The sites (og:site_name, else the host) and tags of each page's newest version, most used first. */
+export function listFacets(db: Database.Database): Facets {
+  const sites = db
+    .prepare(
+      `SELECT coalesce(nullif(v.site, ''), v.host) AS name, COUNT(*) AS count FROM page_versions v
+       WHERE v.version = v.versions AND coalesce(nullif(v.site, ''), v.host) IS NOT NULL
+       GROUP BY name ORDER BY count DESC, lower(name), name`,
+    )
+    .all() as Facet[];
+  const tags = db
+    .prepare(
+      `SELECT t.value AS name, COUNT(*) AS count FROM page_versions v, json_each(v.tags) t
+       WHERE v.version = v.versions GROUP BY t.value ORDER BY count DESC, lower(name), name`,
+    )
+    .all() as Facet[];
+  return { sites, tags };
+}

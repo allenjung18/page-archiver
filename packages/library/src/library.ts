@@ -1,7 +1,7 @@
 // One library: its root folder and its index, opened together. Adding a capture writes its
 // folder first (meta.json last) and indexes it second, so the folder is always the record. An
 // index that is missing is built from the folders on open.
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
   ARCHIVE_FILE,
@@ -17,9 +17,9 @@ import {
   type PageMeta,
 } from "@page-archiver/core";
 import type Database from "better-sqlite3";
-import { indexEntry, openIndex, rebuildIndex, setIndexedTags, type RebuildReport } from "./db.ts";
+import { indexEntry, openIndex, rebuildIndex, removeIndexed, setIndexedTags, type RebuildReport } from "./db.ts";
 import { captureFolder, readCaptureFolder } from "./layout.ts";
-import { findPage, listPages, searchPages, type Filters, type PageRecord, type SearchHit, type SearchOptions } from "./search.ts";
+import { findPage, listFacets, listPages, searchPages, type Facets, type Filters, type PageRecord, type SearchHit, type SearchOptions } from "./search.ts";
 import { LATEST, previousVersion, urlKey, versionsOf, type VersionRef } from "./versions.ts";
 
 export type SaveOptions = Omit<CaptureOptions, "outDir" | "outFile" | "versionOf">;
@@ -53,6 +53,13 @@ export interface Library {
   get(idOrPrefix: string): PageRecord;
   /** Every capture of url, oldest first. */
   versions(url: string): VersionRef[];
+  /** The sites and tags of the pages list() shows, each with how many pages carry it. */
+  facets(): Facets;
+  /**
+   * Deletes one capture: its folder first (moved out of the library in one rename, then
+   * removed), then its index rows. The URL's other versions stay and are renumbered.
+   */
+  remove(idOrPrefix: string): PageRecord;
   /** Adds and removes tags: meta.json first, then the index. */
   tag(idOrPrefix: string, add: readonly string[], remove?: readonly string[]): PageRecord;
   /** A file in a page's folder, as an absolute path (archive.html unless named). */
@@ -117,6 +124,22 @@ export function openLibrary(root: string, options: LibraryOptions = {}): Library
     search: (query, opts) => searchPages(db, query, opts),
     get: (id) => findPage(db, id),
     versions: (url) => versionsOf(db, url),
+    facets: () => listFacets(db),
+    remove(idOrPrefix) {
+      const page = findPage(db, idOrPrefix);
+      // a dot-name at the root is never scanned as a capture, so a reindex cannot bring back a
+      // folder whose removal stopped half way
+      const trash = join(root, `.deleting-${page.id}-${process.pid}`);
+      try {
+        renameSync(join(root, page.dir), trash);
+      } catch (err) {
+        // a folder already gone from the disk leaves only its index entry to remove
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
+      removeIndexed(db, page.id);
+      rmSync(trash, { recursive: true, force: true });
+      return page;
+    },
     tag(idOrPrefix, addTags, remove = []) {
       const page = findPage(db, idOrPrefix);
       const metaPath = join(root, page.dir, META_FILE);

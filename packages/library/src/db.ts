@@ -164,3 +164,13 @@ export function indexEntry(db: Database.Database, entry: FolderEntry): void {
 export function setIndexedTags(db: Database.Database, id: string, tags: readonly string[]): void {
   db.transaction(() => db.prepare("UPDATE pages SET tags = ? WHERE id = ?").run(JSON.stringify(tags), id)).immediate();
 }
+
+/** Removes a page's rows from the index (its folder is the caller's to remove first). */
+export function removeIndexed(db: Database.Database, id: string): void {
+  db.transaction(() => {
+    const row = db.prepare("SELECT rowid FROM pages WHERE id = ?").get(id) as { rowid: number } | undefined;
+    if (!row) return;
+    db.prepare("DELETE FROM pages_fts WHERE rowid = ?").run(row.rowid);
+    db.prepare("DELETE FROM pages WHERE rowid = ?").run(row.rowid);
+  }).immediate();
+}

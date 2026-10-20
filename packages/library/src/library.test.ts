@@ -269,3 +269,60 @@ describe("tags", () => {
     expect(() => lib.get("ab")).toThrow(/not a page id/);
   });
 });
+
+describe("remove", () => {
+  it("deletes the capture's folder and its index rows, and a rebuild does not bring it back", () => {
+    const page = lib.search("zanzibarite")[0]!;
+    const folder = lib.pathOf(page, "");
+    expect(lib.remove(page.id).id).toBe(page.id);
+    expect(existsSync(folder)).toBe(false);
+    expect(() => lib.get(page.id)).toThrow(/no page/);
+    expect(() => lib.search("zanzibarite")).not.toThrow();
+    expect(lib.search("zanzibarite")).toEqual([]);
+    expect(lib.list()).toHaveLength(2);
+    lib.reindex();
+    expect(lib.list()).toHaveLength(2);
+    expect(lib.search("zanzibarite")).toEqual([]);
+    expect(() => lib.remove(page.id)).toThrow(/no page/);
+  });
+
+  it("a folder already gone from the disk still leaves the index", () => {
+    const page = lib.search("zanzibarite")[0]!;
+    rmSync(lib.pathOf(page, ""), { recursive: true });
+    lib.remove(page.id);
+    expect(() => lib.get(page.id)).toThrow(/no page/);
+  });
+
+  it("deleting version 1 keeps version 2 and renumbers it", async () => {
+    const v1 = lib.search("zanzibarite")[0]!;
+    const v2 = await lib.importFile(file("again.html", save({ ...ARTICLES[1]!, body: "The zanzibarite shelf again.", savedAt: "2026-09-02T09:00:00Z" })));
+    lib.remove(v1.id);
+    expect(lib.get(v2.id)).toMatchObject({ version: 1, versions: 1 });
+    expect(lib.search("zanzibarite").map((h) => h.id)).toEqual([v2.id]);
+  });
+});
+
+describe("facets", () => {
+  it("counts the sites and tags of each page's newest version", async () => {
+    expect(lib.facets()).toEqual({
+      sites: [
+        { name: "blog.example", count: 1 },
+        { name: "notes.example", count: 1 },
+        { name: "The Harbour Gazette", count: 1 },
+      ],
+      tags: [
+        { name: "sea", count: 3 },
+        { name: "news", count: 1 },
+      ],
+    });
+    // a newer version replaces the older one in the counts
+    await lib.importFile(file("again.html", save({ ...ARTICLES[1]!, body: "The zanzibarite shelf again.", savedAt: "2026-09-02T09:00:00Z" })), { tags: ["kelp"] });
+    expect(lib.facets().tags).toEqual([
+      { name: "sea", count: 3 },
+      { name: "kelp", count: 1 },
+      { name: "news", count: 1 },
+    ]);
+    // each facet name is a filter list() understands
+    for (const s of lib.facets().sites) expect(lib.list({ site: s.name })).toHaveLength(s.count);
+  });
+});
