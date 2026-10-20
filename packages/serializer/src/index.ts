@@ -4,5 +4,9 @@
 
 export const SERIALIZER_VERSION = "0.1.0";
 
-export { snapshot, type Snapshot, type SnapshotOptions } from "./snapshot.ts";
+export { snapshot, type FontFaceInfo, type Snapshot, type SnapshotOptions } from "./snapshot.ts";
 export { freezeImage, collapsePicture, LAZY_SRC_ATTRIBUTES } from "./images.ts";
+export { ADOPTED_ATTRIBUTE, adoptedStyles, cssomText, styleElementText } from "./styles.ts";
+export { CANVAS_ATTRIBUTE, canvasToImage, readCanvas } from "./canvas.ts";
+export { openShadowRoot, shadowTemplate } from "./shadow.ts";
+export { freezeFormState, planScroll } from "./state.ts";
