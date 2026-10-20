@@ -48,7 +48,8 @@ export function renderSmokeReport(rows: readonly SmokeRow[]): string {
     "",
     "\"live vs offline\" compares the capture's own full-page screenshot with the archive opened offline: real pages",
     "move (carousels, ads, clocks), so it is for reading, not a gate. \"kept as links\" counts the references the",
-    "archive refused offline that the capture had already reported it could not load (each one is in the warnings).",
+    "archive refused offline that the capture had already reported it could not load (each one is in the warnings);",
+    "they fail the page like any other violation, and a page that fails only on them is usually recorded as a miss.",
     "",
   ];
   for (const r of rows) {

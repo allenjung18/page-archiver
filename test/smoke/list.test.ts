@@ -42,7 +42,7 @@ describe("the committed smoke list", () => {
 });
 
 describe("splitViolations", () => {
-  it("excuses only a violation whose URL a kept-as-a-link warning names", () => {
+  it("sets apart only a violation whose URL a kept-as-a-link warning names", () => {
     const v = (blockedURI: string) => ({ directive: "img-src", blockedURI });
     const { reported, unreported } = splitViolations(
       [v("https://cdn.test/avatar.jpg"), v("https://cdn.test/other.jpg"), v("https://cdn.test/x.png"), v("")],
