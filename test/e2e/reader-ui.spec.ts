@@ -129,6 +129,12 @@ test("search shows highlighted snippets, and site, tag and date filters narrow t
 
   await page.getByRole("searchbox", { name: "Search" }).fill("nowhereword");
   await expect(page.getByTestId("no-results")).toHaveText("Nothing matches.");
+  // a query with nothing to search for is an error, and the last results do not stay under it
+  await page.getByRole("searchbox", { name: "Search" }).fill("wobbleloaf");
+  await expect(results(page)).toHaveCount(1);
+  await page.getByRole("searchbox", { name: "Search" }).fill("--");
+  await expect(page.getByRole("alert")).toContainText("nothing to search for");
+  await expect(results(page)).toHaveCount(0);
   await page.getByRole("searchbox", { name: "Search" }).fill("");
   await expect(results(page)).toHaveCount(6);
 

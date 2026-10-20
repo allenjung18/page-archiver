@@ -266,7 +266,12 @@ export function App() {
           setResults(r);
           setError(null);
         })
-        .catch((e: Error) => live && setError(e.message));
+        .catch((e: Error) => {
+          if (!live) return;
+          // results for an earlier query must not stand under this one
+          setResults([]);
+          setError(e.message);
+        });
     }, query.q ? 150 : 0);
     return () => {
       live = false;
