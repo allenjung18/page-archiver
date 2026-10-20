@@ -93,8 +93,17 @@ describe("importHtml of an archive page-archiver made (the Chrome extension's)",
     expect(a.meta.warnings).toEqual(["x.png: fetch failed (HTTP 404); kept as a link", "removed 1 script elements and 1 script attributes"]);
   });
 
-  it("prefers a SingleFile header to any page-archiver metas", () => {
+  it("prefers its own intact stamp to a SingleFile comment the page carried, and SingleFile's to a stamp edited since", () => {
     expect(readSavedHeader(SAVE)).toMatchObject({ tool: "singlefile", url: "https://example.org/notes/kelp#top" });
     expect(readSavedHeader("<!doctype html><p>x")).toBeNull();
+    // a page that is itself a SingleFile save (hosted on the web), archived by page-archiver
+    const quoting = ours(`<!--\n Page saved with SingleFile\n url: https://elsewhere.test/\n saved date: 2001-01-01T00:00:00Z\n--><p>Quoted.</p>`);
+    expect(quoting).toContain("Page saved with SingleFile");
+    expect(readSavedHeader(quoting)).toMatchObject({ tool: "page-archiver", url: "https://made.test/p", savedAt: new Date("2026-10-20T08:00:00Z") });
+    const a = importHtml(quoting, { reader: false });
+    expect(a.meta).toMatchObject({ url: "https://made.test/p", capturedAt: "2026-10-20T08:00:00.000Z" });
+    expect(a.meta.warnings).toEqual(["x.png: fetch failed (HTTP 404); kept as a link"]);
+    // the same bytes changed after the stamp (re-saved by SingleFile): SingleFile's header wins
+    expect(readSavedHeader(quoting.replace("Quoted.", "Edited."))).toMatchObject({ tool: "singlefile", url: "https://elsewhere.test/" });
   });
 });

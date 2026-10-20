@@ -10,7 +10,7 @@ import { allElements, parseDocument, serializeDocument, textOf } from "./dom.ts"
 import { extractReader, renderReader } from "./extras/reader.ts";
 import { newPageId, normalizeTags, type PageMeta } from "./meta.ts";
 import { sanitizeDocument } from "./sanitize.ts";
-import { canonicalUrl, finalizeStamp, readStamp, stamp } from "./stamp.ts";
+import { canonicalUrl, finalizeStamp, readStamp, stamp, verifyStamp } from "./stamp.ts";
 
 /** What SingleFile writes into the comment at the top of every save. */
 export interface SingleFileHeader {
@@ -55,11 +55,17 @@ export function readOwnStamp(html: string): SavedHeader | null {
   return { tool: "page-archiver", url: s["source-url"], savedAt: Number.isNaN(at.getTime()) ? null : at, warnings };
 }
 
-/** The saved file's header: SingleFile's comment first, else page-archiver's own stamp. */
+/**
+ * The saved file's header. page-archiver's own stamp wins when its hash still matches the file
+ * (an archive exactly as page-archiver wrote it, even of a page that quotes SingleFile's comment);
+ * else SingleFile's comment (a SingleFile save, perhaps of one of our archives); else our stamp.
+ */
 export function readSavedHeader(html: string): SavedHeader | null {
+  const own = readOwnStamp(html);
+  if (own && verifyStamp(html)) return own;
   const sf = readSingleFileHeader(html);
   if (sf) return { ...sf, tool: "singlefile", warnings: [] };
-  return readOwnStamp(html);
+  return own;
 }
 
 export interface ImportOptions {
