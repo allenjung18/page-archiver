@@ -21,6 +21,7 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",
+    "oracle": "npm run build && playwright test -c playwright.oracle.config.ts",
     "fixtures": "node fixtures/server.ts",
     "fixtures:images": "node fixtures/make-images.ts",
     "clean": "tsc -b tsconfig.build.json --clean && rm -rf packages/serializer/dist test-results playwright-report"
