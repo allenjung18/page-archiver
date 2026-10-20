@@ -1,30 +1,52 @@
 import { describe, expect, it } from "vitest";
 import { allElements, getAttr, parseDocument, serializeDocument } from "../dom.ts";
 import type { Resource } from "../resources.ts";
-import { absoluteLink, inlineDocument, MEDIA_SRC_ATTRIBUTE, POSTER_FRAME_ATTRIBUTE, UNFETCHED_ATTRIBUTE_PREFIX, VIDEO_RATIO_ATTRIBUTE, type HtmlContext } from "./html.ts";
+import {
+  absoluteLink,
+  inlineDocument,
+  MEDIA_SRC_ATTRIBUTE,
+  POSTER_FRAME_ATTRIBUTE,
+  SPRITE_ID_PREFIX,
+  SPRITES_ATTRIBUTE,
+  UNFETCHED_ATTRIBUTE_PREFIX,
+  VIDEO_RATIO_ATTRIBUTE,
+  type HtmlContext,
+} from "./html.ts";
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const PNG_URI = `data:image/png;base64,${PNG.toString("base64")}`;
 
-function ctxFor(files: Record<string, string | Buffer>, baseUrl = "http://site.test/blog/post.html") {
+/** A file served with its own MIME type (a bare string is CSS, a Buffer a PNG). */
+interface Typed {
+  mime: string;
+  body: string | Buffer;
+}
+
+type Files = Record<string, string | Buffer | Typed>;
+
+function ctxFor(files: Files, baseUrl = "http://site.test/blog/post.html") {
   const warnings: string[] = [];
+  const requested: string[] = [];
   const ctx: HtmlContext = {
     baseUrl,
     async get(url): Promise<Resource | null> {
+      requested.push(url);
       const f = files[url];
       if (f === undefined) return null;
-      return typeof f === "string" ? { url, mime: "text/css", bytes: Buffer.from(f) } : { url, mime: "image/png", bytes: f };
+      if (typeof f === "string") return { url, mime: "text/css", bytes: Buffer.from(f) };
+      if (Buffer.isBuffer(f)) return { url, mime: "image/png", bytes: f };
+      return { url, mime: f.mime, bytes: Buffer.from(f.body) };
     },
     warn: (m) => warnings.push(m),
   };
-  return { ctx, warnings };
+  return { ctx, warnings, requested };
 }
 
-async function run(html: string, files: Record<string, string | Buffer>, baseUrl?: string) {
+async function run(html: string, files: Files, baseUrl?: string) {
   const doc = parseDocument(html);
-  const { ctx, warnings } = ctxFor(files, baseUrl);
+  const { ctx, warnings, requested } = ctxFor(files, baseUrl);
   await inlineDocument(doc, ctx);
-  return { doc, out: serializeDocument(doc), warnings };
+  return { doc, out: serializeDocument(doc), warnings, requested };
 }
 
 const byId = (doc: ReturnType<typeof parseDocument>, id: string) => allElements(doc).find((e) => getAttr(e, "id") === id)!;
@@ -191,6 +213,138 @@ describe("inlineDocument", () => {
   it("leaves data: images alone", async () => {
     const { doc } = await run(`<img id="i" src="${PNG_URI}">`, {});
     expect(getAttr(byId(doc, "i"), "src")).toBe(PNG_URI);
+  });
+});
+
+const SVG = "image/svg+xml";
+const BADGE = `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#c33"/></svg>`;
+const SPRITE = `<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs><linearGradient id="g"><stop offset="0" stop-color="#36c"/></linearGradient></defs>
+  <symbol id="a" viewBox="0 0 10 10" onload="steal()"><path d="M0 0h10v10z" fill="url(#g)"/><use xlink:href="#dot"/><image href="pic.png" width="2" height="2"/><script>steal()</script></symbol>
+  <symbol id="dot" viewBox="0 0 2 2"><circle cx="1" cy="1" r="1"/></symbol>
+  <symbol id="unused" viewBox="0 0 2 2"><rect width="2" height="2"/></symbol>
+</svg>`;
+
+describe("inlineDocument: <object> and <embed>", () => {
+  it("makes an image in an <object> or <embed> an <img> of it, keeping its other attributes", async () => {
+    const { doc, out, warnings } = await run(
+      `<object id="o" class="fig" data="/img/chart.png" type="image/png" width="40" height="20" data-page-archiver-frame="f1">fallback</object>` +
+        `<embed id="e" src="http://cdn.test/badge.svg" type="image/svg+xml" width="8" height="8">` +
+        `<object id="u" data="/img/untyped.png"></object>`,
+      {
+        "http://site.test/img/chart.png": PNG,
+        "http://cdn.test/badge.svg": { mime: SVG, body: BADGE },
+        "http://site.test/img/untyped.png": { mime: "application/octet-stream", body: PNG },
+      },
+    );
+    expect(out).not.toMatch(/<object|<embed/);
+    expect(out, "no address left that the archive would fetch").not.toMatch(/(site|cdn)\.test/);
+    const o = byId(doc, "o");
+    expect(o.tagName).toBe("img");
+    expect(getAttr(o, "src")).toBe(PNG_URI);
+    expect(o.attrs.map((a) => a.name)).toEqual(["id", "class", "width", "height", "data-page-archiver-frame", "src"]);
+    expect(getAttr(byId(doc, "e"), "src")).toMatch(/^data:image\/svg\+xml;charset=utf-8;base64,/);
+    expect(getAttr(byId(doc, "u"), "src"), "an untyped image is sniffed").toBe(PNG_URI);
+    expect(warnings).toEqual([]);
+  });
+
+  it("sets aside what is not an image, with a warning, and never puts a data: document into the element", async () => {
+    const { doc, out, warnings, requested } = await run(
+      `<object id="doc" data="/pages/inner.html"><p>fallback</p></object>` +
+        `<embed id="pdf" src="/files/report.pdf" type="application/pdf">` +
+        `<object id="gone" data="/img/gone.png" type="image/png">fallback</object>`,
+      { "http://site.test/pages/inner.html": { mime: "text/html; charset=utf-8", body: "<p>inner</p>" } },
+    );
+    expect(getAttr(byId(doc, "doc"), "data")).toBeNull();
+    expect(getAttr(byId(doc, "doc"), `${UNFETCHED_ATTRIBUTE_PREFIX}data`)).toBe("http://site.test/pages/inner.html");
+    expect(getAttr(byId(doc, "pdf"), "src")).toBeNull();
+    expect(getAttr(byId(doc, "pdf"), `${UNFETCHED_ATTRIBUTE_PREFIX}src`)).toBe("http://site.test/files/report.pdf");
+    expect(getAttr(byId(doc, "pdf"), "type"), "a type alone still starts a plugin").toBeNull();
+    expect(getAttr(byId(doc, "pdf"), `${UNFETCHED_ATTRIBUTE_PREFIX}type`)).toBe("application/pdf");
+    expect(getAttr(byId(doc, "gone"), "type")).toBeNull();
+    expect(getAttr(byId(doc, "gone"), `${UNFETCHED_ATTRIBUTE_PREFIX}data`)).toBe("http://site.test/img/gone.png");
+    expect(byId(doc, "gone").tagName, "an image that cannot be had keeps its fallback").toBe("object");
+    expect(out).not.toMatch(/\s(data|src)="/);
+    expect(out).not.toContain("data:text/html");
+    expect(requested, "a declared non-image is not fetched").not.toContain("http://site.test/files/report.pdf");
+    expect(warnings).toEqual([
+      "embed http://site.test/files/report.pdf: application/pdf is not an image; set aside",
+      "object http://site.test/pages/inner.html: text/html is not an image; set aside",
+    ]);
+  });
+});
+
+describe("inlineDocument: SVG <use> of an external sprite", () => {
+  const files: Files = {
+    "http://cdn.test/icons/sprite.svg": { mime: SVG, body: SPRITE },
+    "http://cdn.test/icons/pic.png": PNG,
+  };
+
+  it("copies the element, and what it refers to, into the document and points the <use> at the copy", async () => {
+    const { doc, out, warnings } = await run(
+      `<p id="g">the page's own #g</p>` +
+        `<svg><use id="u1" href="http://cdn.test/icons/sprite.svg#a"></use></svg>` +
+        `<svg><use id="u2" xlink:href="//cdn.test/icons/sprite.svg#a"/></svg><footer>end</footer>`,
+      files,
+    );
+    const local = `#${SPRITE_ID_PREFIX}0-a`;
+    expect(getAttr(byId(doc, "u1"), "href")).toBe(local);
+    expect(getAttr(byId(doc, "u2"), "href"), "xlink:href too").toBe(local);
+    expect(out).toContain(`<use id="u2" xlink:href="${local}">`);
+    expect(out, "no address left that the archive would fetch").not.toContain("cdn.test");
+    // copied once for both, with the gradient and the symbol it uses, renamed; not the unused one
+    expect(out.split(`id="${SPRITE_ID_PREFIX}0-a"`)).toHaveLength(2);
+    expect(out).toContain(`fill="url(#${SPRITE_ID_PREFIX}0-g)"`);
+    expect(out).toContain(`<linearGradient id="${SPRITE_ID_PREFIX}0-g">`);
+    expect(out).toContain(`<use xlink:href="#${SPRITE_ID_PREFIX}0-dot">`);
+    expect(out).toContain(`<symbol id="${SPRITE_ID_PREFIX}0-dot" viewBox="0 0 2 2">`);
+    expect(out).not.toContain("unused");
+    expect(getAttr(byId(doc, "g"), "id"), "the page's own ids are untouched").toBe("g");
+    // what the copy refers to is inlined against the sprite's URL, and the sprite is sanitized
+    expect(out).toContain(`<image href="${PNG_URI}"`);
+    expect(out).not.toMatch(/<script|onload|steal/);
+    // the copies sit in one hidden <svg> at the end of <body>
+    const body = allElements(doc).find((e) => e.tagName === "body")!;
+    const last = body.childNodes.at(-1)!;
+    expect("tagName" in last && last.tagName).toBe("svg");
+    expect(getAttr(last as never, SPRITES_ATTRIBUTE)).toBe("");
+    expect(warnings).toEqual([]);
+  });
+
+  it("copies into the shadow root the <use> is in, where its ids are scoped", async () => {
+    const { out } = await run(
+      `<div><template shadowrootmode="open"><svg><use href="http://cdn.test/icons/sprite.svg#dot"></use></svg></template></div>`,
+      files,
+    );
+    expect(out).toMatch(new RegExp(`<template shadowrootmode="open">.*<svg ${SPRITES_ATTRIBUTE}="".*id="${SPRITE_ID_PREFIX}0-dot".*</template>`, "s"));
+  });
+
+  it("sets aside a <use> whose file cannot be had, is not SVG, or has no such element, with a warning", async () => {
+    const { doc, out, warnings } = await run(
+      `<svg><use id="gone" href="http://cdn.test/gone.svg#a"/><use id="html" href="http://cdn.test/page.html#a"/>` +
+        `<use id="none" href="http://cdn.test/icons/sprite.svg#zz"/><use id="whole" href="http://cdn.test/icons/sprite.svg"/>` +
+        `<use id="here" href="#a"/></svg>`,
+      { ...files, "http://cdn.test/page.html": { mime: "text/html", body: `<svg><symbol id="a"></symbol></svg>` } },
+    );
+    for (const [id, url] of [
+      ["gone", "http://cdn.test/gone.svg#a"],
+      ["html", "http://cdn.test/page.html#a"],
+      ["none", "http://cdn.test/icons/sprite.svg#zz"],
+      ["whole", "http://cdn.test/icons/sprite.svg"],
+    ]) {
+      expect(getAttr(byId(doc, id!), "href"), id).toBeNull();
+      expect(getAttr(byId(doc, id!), `${UNFETCHED_ATTRIBUTE_PREFIX}href`), id).toBe(url);
+    }
+    expect(getAttr(byId(doc, "here"), "href"), "an in-page reference is left alone").toBe("#a");
+    expect(out).not.toContain(SPRITES_ATTRIBUTE);
+    expect(warnings.sort()).toEqual(
+      [
+        "use http://cdn.test/icons/sprite.svg: names no element of the file; set aside",
+        'use http://cdn.test/icons/sprite.svg#zz: the file has no element with id "zz"; set aside',
+        "use http://cdn.test/page.html#a: text/html is not an SVG file; set aside",
+      ].sort(),
+    );
   });
 });
 

@@ -1,6 +1,6 @@
 // Everything that could run, navigate, or reach the network on its own is removed from the
 // archive. A frozen page needs no JavaScript: what it rendered is already in the DOM.
-import { allElements, detach, getAttr, parseDocument, removeAttr, serializeDocument, tokens, type Document, type Element } from "./dom.ts";
+import { allElements, detach, getAttr, parseDocument, removeAttr, serializeDocument, tokens, type Element, type ParentNode } from "./dom.ts";
 
 /** Elements removed outright, wherever they are (SVG <script> included). */
 export const REMOVED_ELEMENTS = ["script", "noscript", "base"] as const;
@@ -72,8 +72,8 @@ function shouldRemoveElement(el: Element): boolean {
   return false;
 }
 
-/** Removes scripts and script hooks from doc in place. */
-export function sanitizeDocument(doc: Document | Element): SanitizeReport {
+/** Removes scripts and script hooks from doc (or any subtree, such as a parsed fragment) in place. */
+export function sanitizeDocument(doc: ParentNode): SanitizeReport {
   const report: SanitizeReport = { elements: 0, attributes: 0 };
   for (const el of allElements(doc)) {
     if (!el.parentNode) continue; // inside something already removed

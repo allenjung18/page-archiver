@@ -74,6 +74,10 @@ export function detach(node: ChildNode): void {
   if (node.parentNode) ta.detachNode(node);
 }
 
+export function appendChild(parent: ParentNode, child: ChildNode): void {
+  ta.appendChild(parent, child);
+}
+
 export function replaceWith(node: ChildNode, replacement: ChildNode): void {
   const parent = node.parentNode;
   if (!parent) return;
@@ -83,12 +87,24 @@ export function replaceWith(node: ChildNode, replacement: ChildNode): void {
   node.parentNode = null;
 }
 
-export function createElement(tagName: string, attrs: Record<string, string> = {}): Element {
+export function createElement(tagName: string, attrs: Record<string, string> = {}, namespace: html5.NS = html5.NS.HTML): Element {
   return ta.createElement(
     tagName,
-    html5.NS.HTML,
+    namespace,
     Object.entries(attrs).map(([name, value]) => ({ name, value })),
   );
+}
+
+export const SVG_NAMESPACE = html5.NS.SVG;
+
+/** A deep copy of el (elements and text; comments are left out), not yet in any tree. */
+export function cloneElement(el: Element): Element {
+  const copy = ta.createElement(el.tagName, el.namespaceURI, el.attrs.map((a) => ({ ...a })));
+  for (const child of el.childNodes) {
+    if (isElement(child)) ta.appendChild(copy, cloneElement(child));
+    else if (child.nodeName === "#text" && "value" in child) ta.insertText(copy, child.value);
+  }
+  return copy;
 }
 
 export function textOf(el: Element): string {
