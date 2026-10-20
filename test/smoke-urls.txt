@@ -7,17 +7,17 @@
 # The text proves the archive holds the page itself, not a bot wall or an error page; matching
 # ignores case and runs of white space. A line with `miss:` is a page known not to save cleanly,
 # with the reason: its test is expected to fail, and Playwright reports it when it starts passing.
-# A resource the site will not give (an HTTP error) is kept in the archive as a link, which the
-# archive's CSP refuses offline: that fails the page, and is the usual reason for a miss.
+# A resource the site will not give (an HTTP error) is set aside by the capture, so it is not a
+# request: it is in the warnings, not a failure.
 # Replace these with the pages you care about; any label is fine as long as it is unique.
 
 news        | https://www.wbez.org/technology/2025/03/29/as-the-trump-administration-purges-web-pages-this-group-is-rushing-to-save-them | Internet Archive
 docs        | https://docs.python.org/3/tutorial/introduction.html | An Informal Introduction to Python
 github      | https://github.com/mozilla/readability | Readability.js
 fonts-blog  | https://www.joshwcomeau.com/css/custom-css-reset/ | My Custom CSS Reset
-recipe      | https://www.seriouseats.com/the-food-lab-best-chocolate-chip-cookie-recipe | chocolate chip cookie | miss: ad-sync tracking pixels answer HTTP 4xx, and on repeated captures the site answers its own fonts and icons with HTTP 403; all are kept as links and the archive's CSP refuses them offline
+recipe      | https://www.seriouseats.com/the-food-lab-best-chocolate-chip-cookie-recipe | chocolate chip cookie
 wikipedia   | https://en.wikipedia.org/wiki/Web_archiving | Web archiving
 mdn         | https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/img | HTML image embed element
 medium      | https://medium.com/@karpathy/software-2-0-a64152b37c35 | Software 2.0
-substack    | https://www.astralcodexten.com/p/heuristics-that-almost-always-work | Heuristics That Almost Always Work | miss: one avatar image answers HTTP 404, so it is kept as a link and the archive's CSP refuses it offline
+substack    | https://www.astralcodexten.com/p/heuristics-that-almost-always-work | Heuristics That Almost Always Work
 product     | https://www.raspberrypi.com/products/raspberry-pi-5/ | Raspberry Pi 5

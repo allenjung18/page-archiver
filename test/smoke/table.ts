@@ -20,8 +20,6 @@ export interface SmokeRow {
   bytes: number;
   /** Fraction of pixels differing between the capture's live screenshot and the archive offline; informative, never asserted. */
   diff: number | null;
-  /** CSP violations for resources the capture reported it could not have (kept as links). */
-  keptAsLinks: number;
   warnings: string[];
   /** The archive folder, for eyeballing. */
   dir: string;
@@ -38,18 +36,16 @@ function esc(s: string): string {
 
 export function renderSmokeReport(rows: readonly SmokeRow[]): string {
   const lines = [
-    "| page | result | size | live vs offline | warnings | kept as links | problems |",
-    "|---|---|---|---|---|---|---|",
+    "| page | result | size | live vs offline | warnings | problems |",
+    "|---|---|---|---|---|---|",
     ...rows.map((r) => {
       const diff = r.diff === null ? "–" : `${(r.diff * 100).toFixed(2)}%`;
       const problems = [...r.problems, ...(r.miss ? [`recorded miss: ${r.miss}`] : [])].map(esc).join("; ") || "–";
-      return `| [${r.label}](${r.url}) | ${r.result} | ${size(r.bytes)} | ${diff} | ${r.warnings.length} | ${r.keptAsLinks} | ${problems} |`;
+      return `| [${r.label}](${r.url}) | ${r.result} | ${size(r.bytes)} | ${diff} | ${r.warnings.length} | ${problems} |`;
     }),
     "",
     "\"live vs offline\" compares the capture's own full-page screenshot with the archive opened offline: real pages",
-    "move (carousels, ads, clocks), so it is for reading, not a gate. \"kept as links\" counts the references the",
-    "archive refused offline that the capture had already reported it could not load (each one is in the warnings);",
-    "they fail the page like any other violation, and a page that fails only on them is usually recorded as a miss.",
+    "move (carousels, ads, clocks), so it is for reading, not a gate.",
     "",
   ];
   for (const r of rows) {

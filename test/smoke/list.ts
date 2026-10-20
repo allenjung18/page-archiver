@@ -59,14 +59,3 @@ export function readSmokeList(file: string = SMOKE_LIST): SmokePage[] {
   return parseSmokeList(readFileSync(file, "utf8"));
 }
 
-/**
- * Splits CSP violations into those whose URL a capture warning names (`<url>: …; kept as a link`:
- * the capture already said it could not have that resource) and the rest, which nothing explains.
- */
-export function splitViolations<V extends { blockedURI: string }>(violations: readonly V[], warnings: readonly string[]): { reported: V[]; unreported: V[] } {
-  const kept = new Set(warnings.filter((w) => /; kept as a link$/.test(w)).map((w) => w.slice(0, w.indexOf(": "))));
-  const reported: V[] = [];
-  const unreported: V[] = [];
-  for (const v of violations) (v.blockedURI && kept.has(v.blockedURI) ? reported : unreported).push(v);
-  return { reported, unreported };
-}

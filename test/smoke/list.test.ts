@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeText, parseSmokeList, readSmokeList, splitViolations } from "./list.ts";
+import { normalizeText, parseSmokeList, readSmokeList } from "./list.ts";
 
 describe("parseSmokeList", () => {
   it("reads labels, urls, expected text and misses, skipping comments and blank lines", () => {
@@ -38,21 +38,5 @@ describe("normalizeText", () => {
 describe("the committed smoke list", () => {
   it("parses, and holds ten pages", () => {
     expect(readSmokeList()).toHaveLength(10);
-  });
-});
-
-describe("splitViolations", () => {
-  it("sets apart only a violation whose URL a kept-as-a-link warning names", () => {
-    const v = (blockedURI: string) => ({ directive: "img-src", blockedURI });
-    const { reported, unreported } = splitViolations(
-      [v("https://cdn.test/avatar.jpg"), v("https://cdn.test/other.jpg"), v("https://cdn.test/x.png"), v("")],
-      [
-        "https://cdn.test/avatar.jpg: HTTP 404; kept as a link",
-        "https://cdn.test/x.png: alternate stylesheet dropped",
-        "network not idle after 15 s (after load); captured anyway",
-      ],
-    );
-    expect(reported.map((r) => r.blockedURI)).toEqual(["https://cdn.test/avatar.jpg"]);
-    expect(unreported.map((r) => r.blockedURI)).toEqual(["https://cdn.test/other.jpg", "https://cdn.test/x.png", ""]);
   });
 });
