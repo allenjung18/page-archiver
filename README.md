@@ -180,7 +180,8 @@ take the list filters as query parameters (`site`, `tag`, `since`, `until`, `all
 and answers 409 when those bytes are in the library already), `POST pages/<id>/recapture`,
 `POST pages/<id>/tags` (`{"add", "remove"}`) and `DELETE pages/<id>`, need
 `Authorization: Bearer <token>`; the reader UI is handed the token in its page. Requests
-that name any host other than `127.0.0.1:<port>` or `localhost:<port>` are refused.
+that name any host other than `127.0.0.1:<port>` are refused, `localhost:<port>` included: open
+the reader at `http://127.0.0.1:<port>/`.
 
 ## Saving from Chrome
 

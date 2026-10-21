@@ -259,8 +259,10 @@ comment (`readSingleFileHeader`) or, for a file page-archiver made itself, from 
 
 `startServer` (`index.ts`) listens on `DEFAULT_HOST` (`127.0.0.1`) only, on `DEFAULT_PORT`
 (47320) unless told otherwise, with a write token of 24 random bytes in hex (`newToken`).
-`createApp` (`api.ts`) refuses any request whose `Host` is not `127.0.0.1:<port>` or
-`localhost:<port>`, and every write needs `Authorization: Bearer <token>`. The reader UI is
+`createApp` (`api.ts`) refuses (403) any request whose `Host` is not exactly the address and
+port the server bound (`127.0.0.1:<port>`, from the listener's `AddressInfo`), so a page at a
+public name that resolves to 127.0.0.1 (`127.0.0.1.nip.io`, DNS rebinding) cannot read the API or
+the token page; `localhost:<port>` is refused too. Every write needs `Authorization: Bearer <token>`. The reader UI is
 served under `UI_CSP`. Archives are served by `archiveResponse` (`serve-archive.ts`) with
 `ARCHIVE_HEADERS` (`ARCHIVE_CSP`, `nosniff`, `no-referrer`, `no-store`) at
 `/archive/<id>/original|reader` (`VIEWS`), and the UI shows them only in an
@@ -299,7 +301,8 @@ The extension makes no poster frames: a video saved from Chrome keeps its own po
   attribute or comment name the URL.
 - The extension refuses private hosts by the URL, not the address: a public host name that
   resolves to a private address (`127.0.0.1.nip.io`, DNS rebinding) is fetched, since the
-  service worker never sees the address, and `pa serve` does not check the `Host` header. A
+  service worker never sees the address. `pa serve` refuses such a request by its `Host`, so the
+  token page is not among them. A
   resource on another site that needs the reader's cookies is fetched without them, so it may be
   refused and set aside.
 - The reader copy needs Readability to find an article; a page without one gets none.
