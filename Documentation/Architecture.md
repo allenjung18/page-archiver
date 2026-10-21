@@ -179,7 +179,9 @@ never a `type()` string), resolves against the sheet's own URL, never the page's
 (`resolveCssUrl`). A stylesheet written as a `data:text/css` URL, linked or imported, is decoded
 (`dataCssText`, base64 or percent-encoded) and made self-contained the same way; a relative URL in
 it names nothing, live or in the archive, and becomes `url("data:,")`. A `data:` sheet of any
-other type is left as it is: a browser does not apply it. An `@import` or `url()` that cannot be
+other type is left as it is in a standards-mode page, where a browser does not apply it; a
+quirks-mode page (`CssContext.quirks`, from the archive's own doctype) applies a `data:` sheet of
+any type, so there every one is inlined. An `@import` or `url()` that cannot be
 had is set aside (above). CSS that does not parse keeps its text with `url()`s inlined, every
 `@import` in it set aside as a comment (`setImportsAside`, which reads past comments and
 strings), and a warning.

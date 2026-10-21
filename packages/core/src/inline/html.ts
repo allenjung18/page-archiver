@@ -89,7 +89,7 @@ async function inlineStylesheetLink(link: Element, ctx: HtmlContext): Promise<vo
   const rel = tokens(link, "rel");
   const raw = getAttr(link, "href");
   // a data:text/css sheet is decoded here: its url()s are inlined as any sheet's are
-  const data = raw === null ? null : dataCssText(raw);
+  const data = raw === null ? null : dataCssText(raw, ctx.quirks);
   const href = data !== null ? raw!.trim() : fetchable(raw, ctx.baseUrl);
   if (!href) return;
   if (rel.includes("alternate")) {
@@ -519,6 +519,8 @@ async function inlineSvgImageAttr(el: Element, name: string, value: string, ctx:
 export async function inlineDocument(doc: Document, ctx: HtmlContext): Promise<void> {
   const page = new URL(ctx.pageUrl ?? ctx.baseUrl, ctx.baseUrl);
   page.hash = "";
+  // the archive keeps the page's doctype, so it is in the mode the page was in
+  ctx = { ...ctx, quirks: doc.mode === "quirks" };
   await inlineElements(allElements(doc), ctx, { page: page.href, sheets: new Map(), scopes: new Map() });
 }
 

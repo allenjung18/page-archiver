@@ -18,6 +18,11 @@ export interface CssContext {
   fonts?: FontFilter | undefined;
   /** True when the browser fetched this URL while the page loaded (narrows a font's src list). */
   fetched?: ((url: string) => boolean) | undefined;
+  /**
+   * The document is in quirks mode (no standards doctype): a browser then applies a same-origin
+   * sheet whatever its type, and a data: sheet is same-origin, so a `data:,…` sheet styles the page.
+   */
+  quirks?: boolean | undefined;
 }
 
 /** @import nesting deeper than this is dropped with a warning. */
@@ -55,7 +60,10 @@ function dataBody(body: string, isBase64: boolean): Uint8Array {
     } else decoded.push(bytes[i]!);
   }
   if (!isBase64) return Uint8Array.from(decoded);
-  const b64 = String.fromCharCode(...decoded).replace(/[\s=]/g, "");
+  let b64 = "";
+  // in pieces: one argument per byte would overflow the call stack on a sheet of a few hundred KB
+  for (let i = 0; i < decoded.length; i += 0x8000) b64 += String.fromCharCode(...decoded.slice(i, i + 0x8000));
+  b64 = b64.replace(/[\s=]/g, "");
   try {
     return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   } catch {
@@ -65,15 +73,16 @@ function dataBody(body: string, isBase64: boolean): Uint8Array {
 
 /**
  * The text of a data: URL stylesheet, or null when the value is not a data: URL of type text/css.
- * A browser applies a sheet only when it is text/css (a bare `data:,` is text/plain), so any other
- * type is left as it is: it styles nothing and asks nothing of the network.
+ * In a standards-mode page a browser applies a sheet only when it is text/css (a bare `data:,` is
+ * text/plain), so any other type is left as it is: it styles nothing and asks nothing of the
+ * network. `anyType` (a quirks-mode page, CssContext.quirks) takes a data: sheet of any type.
  */
-export function dataCssText(value: string): string | null {
+export function dataCssText(value: string, anyType = false): string | null {
   const v = value.trim();
   const m = /^data:([^,]*),/i.exec(v);
   if (!m) return null;
   const params = (m[1] ?? "").split(";").map((p) => p.trim().toLowerCase());
-  if (params[0] !== "text/css") return null;
+  if (params[0] !== "text/css" && !anyType) return null;
   const isBase64 = params.length > 1 && params.at(-1) === "base64";
   let body = v.slice(m[0].length);
   const hash = body.indexOf("#");
@@ -333,7 +342,7 @@ function setImportsAside(css: string, sheetUrl: string): string {
         else end++;
       }
       const p = parseImport(css.slice(i + "@import".length, end));
-      const url = p ? (resolveCssUrl(p.url, sheetUrl) ?? (dataCssText(p.url) !== null ? sheetLabel(p.url.trim()) : null)) : null;
+      const url = p ? (resolveCssUrl(p.url, sheetUrl) ?? (/^\s*data:/i.test(p.url) ? sheetLabel(p.url.trim()) : null)) : null;
       if (css[end] === ";") end++;
       out += css.slice(last, i) + `/*${unfetchedNote("@import", url ?? "(not understood)")}*/`;
       last = i = end;
@@ -385,7 +394,7 @@ export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, 
   for (const at of imports) {
     const p = parseImport(at.params);
     // an @import of a data:text/css sheet is decoded here; the sheet's own URL is the data: URL
-    const data = p ? dataCssText(p.url) : null;
+    const data = p ? dataCssText(p.url, ctx.quirks) : null;
     const url = p ? (data !== null ? p.url.trim() : resolveCssUrl(p.url, sheetUrl)) : null;
     if (!p || !url) {
       ctx.warn(`${label}: @import ${sheetLabel(at.params)} not understood; dropped`);

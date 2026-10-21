@@ -97,10 +97,20 @@ describe("inlineDocument", () => {
     expect(requested).toEqual(["http://cdn.test/img/p.png"]);
   });
 
-  it("leaves a data: link that is not text/css as it is: a browser does not apply it", async () => {
-    const { out, requested } = await run(`<link rel="stylesheet" href="data:,body%7Bcolor:red%7D">`, {});
-    expect(out).toContain(`<link rel="stylesheet" href="data:,body%7Bcolor:red%7D">`);
+  it("leaves a data: link that is not text/css as it is in a standards-mode page: a browser does not apply it", async () => {
+    const { out, requested } = await run(`<!doctype html><link rel="stylesheet" href="data:,body%7Bbackground:url(http://cdn.test/img/p.png)%7D">`, {
+      "http://cdn.test/img/p.png": PNG,
+    });
+    expect(out).toContain(`<link rel="stylesheet" href="data:,body%7Bbackground:url(http://cdn.test/img/p.png)%7D">`);
     expect(requested).toEqual([]);
+  });
+
+  it("inlines a data: link of any type in a quirks-mode page, which a browser applies", async () => {
+    const { out } = await run(`<link rel="stylesheet" href="data:,body%7Bbackground:url(http://cdn.test/img/p.png)%7D">`, {
+      "http://cdn.test/img/p.png": PNG,
+    });
+    expect(out).toContain(`<style>body{background:url("${PNG_URI}")}</style>`);
+    expect(out, "no link left to load from disk").not.toContain("<link");
   });
 
   it("drops an alternate stylesheet with a warning", async () => {

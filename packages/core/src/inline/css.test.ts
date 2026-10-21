@@ -175,6 +175,21 @@ describe("data: stylesheets", () => {
     expect(asked).toEqual([]);
   });
 
+  it("decodes a large base64 data: sheet (an embedded font's worth)", async () => {
+    const { ctx } = site({});
+    const css = `.a{b:c}/*${"x".repeat(300_000)}*/`;
+    const out = await inlineCss(`@import url("data:text/css;base64,${Buffer.from(css).toString("base64")}");`, "http://s.test/", ctx);
+    expect(out.startsWith(".a{b:c}/*xxx")).toBe(true);
+    expect(out.length).toBe(css.length);
+  });
+
+  it("in a quirks-mode document, imports a data: sheet of any type, as a browser does", async () => {
+    const { ctx } = site({ "http://s.test/a.png": PNG });
+    ctx.quirks = true;
+    const out = await inlineCss(`@import url("data:,.a%7Bbackground:url(http://s.test/a.png)%7D");`, "http://s.test/", ctx);
+    expect(out).toBe(`.a{background:url("${PNG_URI}")}`);
+  });
+
   it("leaves a data: import that is not text/css out, as a browser does", async () => {
     const { ctx, warnings } = site({});
     const out = await inlineCss(`@import url("data:text/plain,.a%7Bb:c%7D");.x{y:1}`, "http://s.test/", ctx);
