@@ -1,0 +1,5 @@
+/* Imported by an @import whose name is written with CSS escapes (fixtures/pages/escaped-import.html). */
+.escaped {
+  height: 60px;
+  background: #d8e0c8 url(../img/figure.png) no-repeat;
+}

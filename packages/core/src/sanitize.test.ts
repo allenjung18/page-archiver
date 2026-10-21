@@ -29,6 +29,11 @@ const ATTRIBUTES: AttrRow[] = [
   ["blockquote", "cite", "javascript:x()", false],
   ["object", "data", "javascript:x()", false],
   ["a", "ping", "https://tracker.example/p", false],
+  // an attribution request, made on load (an <img>) or on a click (an <a>), from any secure context
+  ["img", "attributionsrc", "https://tracker.example/a", false],
+  ["img", "attributionsrc", "", false],
+  ["a", "attributionsrc", "https://tracker.example/a", false],
+  ["img", "ATTRIBUTIONSRC", "https://tracker.example/a", false],
   // a data: document in a frame or plugin can carry script
   ["iframe", "src", "data:text/html,<script>alert(1)</script>", false],
   ["iframe", "src", " DATA:text/html;base64,PHNjcmlwdD4=", false],

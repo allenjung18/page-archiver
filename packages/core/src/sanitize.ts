@@ -43,8 +43,12 @@ export const DOCUMENT_URL_ATTRIBUTES: Record<string, readonly string[]> = {
   object: ["data"],
 };
 
-/** Attributes that make a request on their own, removed always. */
-export const REMOVED_ATTRIBUTES = ["ping"] as const;
+/**
+ * Attributes that make a request on their own, removed always: `ping` on a click, and
+ * `attributionsrc`, an attribution request on load (an `<img>`) or on a click (an `<a>`), sent
+ * from any secure context, which a file opened from disk is.
+ */
+export const REMOVED_ATTRIBUTES = ["ping", "attributionsrc"] as const;
 
 export interface SanitizeReport {
   elements: number;

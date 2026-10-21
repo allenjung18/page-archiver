@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attribution requests</title>
+<!-- An attributionsrc attribute makes Chromium send an attribution request to its URL: an <img>'s
+     as the image loads, an <a>'s on a click, from any secure context, which a file opened from disk
+     is. The image itself is inlined; the attribute must go, or the archive asks the network. -->
+<link rel="stylesheet" href="{{ASSETS}}/css/article.css">
+</head>
+<body>
+<main>
+  <article>
+    <h1>Attribution requests</h1>
+    <p class="byline">By A. Fixture &middot; 20 October 2026</p>
+    <img src="{{ASSETS}}/img/hero.png" width="640" height="240" alt="A blue gradient" attributionsrc="{{ASSETS}}/attribution/register">
+    <p>An ad network registers a view as its image loads, and a click as its <a href="#more" attributionsrc="{{ASSETS}}/attribution/click">link</a> is followed.</p>
+    <p id="more">Neither is the page's content.</p>
+  </article>
+</main>
+</body>
+</html>

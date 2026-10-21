@@ -186,6 +186,27 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html, "no @import rule left to fetch").not.toMatch(/@import\s+(url\(|["'])/);
     },
   },
+  "attribution-src": {
+    withoutCsp: true,
+    check(html) {
+      // the fixture's own comment names the attribute; the element must not carry it
+      expect(html, "no attributionsrc left to send an attribution request").not.toMatch(/<(img|a)\b[^>]*\sattributionsrc/i);
+      expect(html).toMatch(/<img src="data:image\/png;base64,[^"]*" width="640" height="240" alt="A blue gradient">/);
+    },
+  },
+  "escaped-import": {
+    // the second <style> names an at-rule "@\69mport", which postcss cannot parse
+    warnings: [/^http:\/\/127\.0\.0\.1:\d+\/escaped-import\.html: CSS did not parse \(.*At-rule without name\); url\(\)s inlined, @import set aside$/],
+    withoutCsp: true,
+    check(html) {
+      // the import postcss reads as an at-rule "i" is inlined, its image too
+      expect(html).toMatch(/\.escaped \{[^}]*url\("data:image\/png;base64,/);
+      // the two it cannot parse are comments; the rest of that sheet is kept
+      expect(count(html, /\/\* page-archiver unfetched @import: http:\/\/127\.0\.0\.1:\d+\/css\/article\.css \*\//)).toBe(2);
+      expect(html).toMatch(/\.byline \{ letter-spacing: 0\.02em; \}/);
+      expect(html, "no escaped @import left to fetch").not.toMatch(/@(\\69 ?mport|i\\6dport)\s+(url\(|")/);
+    },
+  },
   "external-refs": {
     // the PDF is declared as one, so it is set aside without being fetched; the sprite that is
     // not there answers HTTP 404

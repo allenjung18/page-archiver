@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>An @import written with CSS escapes</title>
+<!-- An at-rule's name may be written with CSS escapes, and Chromium reads "@i\6dport" and
+     "@\69mport" as @import. postcss reads the first as an at-rule "i", so the capture must still
+     inline it; it cannot parse the second at all, so that <style> is written back as it came and
+     its imports must be set aside, not left to fetch. Opened from disk with no CSP, the archive
+     must make no request. The same sheet is linked too, so setting its imports aside loses nothing. -->
+<link rel="stylesheet" href="{{ASSETS}}/css/article.css">
+<style>
+  @i\6dport "{{ASSETS}}/css/escaped.css";
+  .note { color: #6b6455; }
+</style>
+<style>
+  @\69mport "{{ASSETS}}/css/article.css";
+  @\69 mport url("{{ASSETS}}/css/article.css");
+  .byline { letter-spacing: 0.02em; }
+</style>
+</head>
+<body>
+<main>
+  <article>
+    <h1>An @import written with CSS escapes</h1>
+    <p class="byline">By A. Fixture &middot; 20 October 2026</p>
+    <div class="escaped"></div>
+    <p class="note">The band above is drawn by a sheet imported under an escaped name; its image comes from the assets origin.</p>
+  </article>
+</main>
+</body>
+</html>

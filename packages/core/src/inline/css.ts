@@ -130,6 +130,60 @@ const IMAGE_SET_AT = /(?:-webkit-)?image-set\(/iy;
 const URL_AT = new RegExp(URL_TOKEN.source, "iy");
 const IDENT_CHAR = /[\w\-\\]/;
 
+/**
+ * The CSS identifier starting at text[i], its escapes decoded as the CSS tokenizer decodes them
+ * (`\69 ` is "i", `\p` is "p"), and where it ends. Chromium reads an at-rule's name this way, so
+ * "@\69mport" is an @import.
+ */
+function identAt(text: string, i: number): { name: string; end: number } {
+  let name = "";
+  let k = i;
+  while (k < text.length) {
+    const c = text[k]!;
+    if (c === "\\") {
+      const next = text[k + 1];
+      if (next === "\n" || next === "\r" || next === "\f") break; // not an escape: the name ends
+      if (next === undefined) return { name: name + "�", end: k + 1 };
+      const hex = /^[0-9a-f]{1,6}/i.exec(text.slice(k + 1, k + 7));
+      if (hex) {
+        const cp = parseInt(hex[0], 16);
+        name += cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? "�" : String.fromCodePoint(cp);
+        k += 1 + hex[0].length;
+        // one whitespace ends a hex escape and is part of it (CR LF counts as one)
+        if (text[k] === "\r" && text[k + 1] === "\n") k += 2;
+        else if (/[ \t\n\r\f]/.test(text[k] ?? "")) k++;
+      } else {
+        const cp = text.codePointAt(k + 1)!;
+        name += String.fromCodePoint(cp);
+        k += cp > 0xffff ? 3 : 2;
+      }
+    } else if (/[\w-]/.test(c) || c.charCodeAt(0) >= 0x80) {
+      name += c;
+      k++;
+    } else break;
+  }
+  return { name, end: k };
+}
+
+/** True when the at-keyword whose name starts at text[i] (just past its "@") is import, escapes decoded. */
+function isImportAt(text: string, i: number): boolean {
+  return identAt(text, i).name.toLowerCase() === "import";
+}
+
+/**
+ * postcss ends an at-rule's name at a backslash, so `@i\6dport "x.css"` is an at-rule "i" with
+ * params `\6dport "x.css"`; Chromium decodes the escapes and reads an @import. Such a rule is
+ * renamed import here, so it is inlined, or set aside, as any @import is.
+ */
+function unescapeImportName(at: AtRule): void {
+  if (at.raws.afterName !== "" || !at.params.startsWith("\\")) return;
+  const raw = at.name + at.params;
+  if (!isImportAt(raw, 0)) return;
+  at.params = raw.slice(identAt(raw, 0).end).trim();
+  at.name = "import";
+  at.raws.afterName = " ";
+}
+
 /** The quoted string starting at text[i]: where it ends and what it holds as written; null when it is not closed on its line. */
 function stringAt(text: string, i: number): { end: number; raw: string } | null {
   const quote = text[i];
@@ -323,7 +377,8 @@ function groupEnd(text: string, i: number): number {
 /**
  * Every @import in CSS postcss could not parse, replaced by a comment naming its URL, as an
  * unfetched import is: written back as it came, the archive would fetch it, opened from disk.
- * Comments and strings are read past, so an "@import" inside one is left alone.
+ * Comments and strings are read past, so an "@import" inside one is left alone; a name written
+ * with CSS escapes ("@\69mport", which postcss cannot parse) is decoded, as Chromium decodes it.
  */
 function setImportsAside(css: string, sheetUrl: string): string {
   let out = "";
@@ -334,14 +389,16 @@ function setImportsAside(css: string, sheetUrl: string): string {
     if (c === "/" && css[i + 1] === "*") i = commentEnd(css, i);
     else if (c === '"' || c === "'") i = stringAt(css, i)?.end ?? i + 1;
     else if (c === "\\") i += 2;
-    else if (c === "@" && /^@import(?![\w\-\\])/i.test(css.slice(i, i + 8)) && !IDENT_CHAR.test(css[i - 1] ?? "")) {
-      let end = i + "@import".length;
+    else if (c === "@" && !IDENT_CHAR.test(css[i - 1] ?? "") && isImportAt(css, i + 1)) {
+      // the name may be written with escapes ("@\69mport"), which Chromium decodes
+      const nameEnd = identAt(css, i + 1).end;
+      let end = nameEnd;
       while (end < css.length && css[end] !== ";" && css[end] !== "{" && css[end] !== "}") {
         if (css[end] === '"' || css[end] === "'" || css[end] === "(") end = groupEnd(css, end);
         else if (css[end] === "/" && css[end + 1] === "*") end = commentEnd(css, end);
         else end++;
       }
-      const p = parseImport(css.slice(i + "@import".length, end));
+      const p = parseImport(css.slice(nameEnd, end));
       const url = p ? (resolveCssUrl(p.url, sheetUrl) ?? (/^\s*data:/i.test(p.url) ? sheetLabel(p.url.trim()) : null)) : null;
       if (css[end] === ";") end++;
       out += css.slice(last, i) + `/*${unfetchedNote("@import", url ?? "(not understood)")}*/`;
@@ -369,6 +426,7 @@ export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, 
   const imports: AtRule[] = [];
   const faces: AtRule[] = [];
   root.walkAtRules((at) => {
+    unescapeImportName(at);
     const name = at.name.toLowerCase();
     if (name === "charset") at.remove();
     else if (name === "import") imports.push(at);

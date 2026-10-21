@@ -72,6 +72,18 @@ test("without the CSP, a network reference is caught by the route as a blocked r
   expect(opened.blocked).toEqual([`image ${ASSETS_ORIGIN}/img/hero.png`]);
 });
 
+// An archive opened from disk (file:) or from pa serve (127.0.0.1) is a secure context, and some
+// requests are made only from one: an attributionsrc's. A harness serving the archive from a
+// host that is not one would never see them.
+test("the archive is a secure context, so a request made only from one is caught", async ({ browser }, testInfo) => {
+  const file = testInfo.outputPath("attribution.html");
+  writeFileSync(file, page(`<img src="${dataPng}" width="64" height="32" alt="" attributionsrc="${ASSETS_ORIGIN}/attribution/register">`));
+  let secure: boolean | undefined;
+  const opened = await openOffline(browser, file, { csp: false, inspect: async (p) => void (secure = await p.evaluate(() => isSecureContext)) });
+  expect(secure, "isSecureContext").toBe(true);
+  expect(opened.blocked).toContain(`other ${ASSETS_ORIGIN}/attribution/register`);
+});
+
 // Found on a real product page: large decoding="async" images below the fold were in the archive
 // but not yet painted when the full-page screenshot was taken, so they came out blank.
 test("large decoding=async images below the fold are in the screenshot", async ({ browser }, testInfo) => {

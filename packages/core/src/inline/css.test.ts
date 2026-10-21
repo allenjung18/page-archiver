@@ -213,6 +213,34 @@ describe("CSS that does not parse", () => {
     expect(asked).toEqual(["http://s.test/css/a.png"]);
     expect(warnings[0]).toMatch(/did not parse .*; url\(\)s inlined, @import set aside$/);
   });
+
+  it("sets aside an @import whose name is written with CSS escapes, as Chromium reads it", async () => {
+    // postcss cannot parse "@\69mport" (an at-rule with no name); Chromium reads it as @import
+    const { ctx, asked } = site({ "http://s.test/css/b.css": `.b{}`, "http://s.test/css/a.png": PNG });
+    const out = await inlineCss(
+      String.raw`@\69mport "gone.css";@\69 mport url(b.css) print;@IMPOR\54 "c.css";@\69mportant "d.css";.x{background:url(a.png)}`,
+      "http://s.test/css/site.css",
+      ctx,
+    );
+    expect(out, "the \\69 escape").toContain(`/* page-archiver unfetched @import: http://s.test/css/gone.css */`);
+    expect(out, "an escape ended by a space, url() form").toContain(`/* page-archiver unfetched @import: http://s.test/css/b.css */`);
+    expect(out, "an escape at the end of the name").toContain(`/* page-archiver unfetched @import: http://s.test/css/c.css */`);
+    expect(out, "an at-rule that only starts like one is left alone").toContain(String.raw`@\69mportant "d.css";`);
+    expect(asked, "the url() form is not inlined as a sheet").toEqual(["http://s.test/css/a.png"]);
+  });
+});
+
+describe("an @import whose name is written with CSS escapes", () => {
+  it("is inlined as any @import when postcss reads it as another at-rule", async () => {
+    // postcss stops an at-rule name at a backslash: "@i\6dport" is an at-rule "i" with params "\6dport …"
+    const { ctx, asked } = site({ "http://s.test/css/b.css": `.b{}`, "http://s.test/css/c.css": `.c{}` });
+    const out = await inlineCss(String.raw`@i\6dport "b.css";@im\port url(c.css) print;@m\65 dia print{.y{z:1}}.x{y:1}`, "http://s.test/css/site.css", ctx);
+    expect(out, "the hex escape").toContain(`.b{}`);
+    expect(out, "the escape of a plain letter, in its media condition").toContain(`@media print{.c{}}`);
+    expect(out, "no escaped @import left to fetch").not.toMatch(/@i\\6dport|@im\\port/);
+    expect(out, "an escaped name that is not import is left as it came").toContain(String.raw`@m\65 dia print{.y{z:1}}`);
+    expect(asked).toEqual(["http://s.test/css/b.css", "http://s.test/css/c.css"]);
+  });
 });
 
 describe("image-set() string arguments", () => {

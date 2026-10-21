@@ -3,8 +3,13 @@ import type { Browser, Page } from "@playwright/test";
 import { ARCHIVE_CSP } from "@page-archiver/core";
 import { VIEWPORT } from "./env.ts";
 
-/** Where the archive is served from inside the offline context. Never resolves on a real network. */
-export const ARCHIVE_URL = "http://archive.invalid/archive.html";
+/**
+ * Where the archive is served from inside the offline context. A `.localhost` host, so the page is
+ * a secure context as an archive opened from disk (file:) or from `pa serve` (127.0.0.1) is: a
+ * request Chromium makes only from one (an `attributionsrc` attribution request) is made here too,
+ * and caught. The context is offline, so it never reaches a real server either.
+ */
+export const ARCHIVE_URL = "http://archive.localhost/archive.html";
 
 export interface CspViolation {
   directive: string;
