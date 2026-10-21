@@ -226,6 +226,17 @@ describe("the host check", () => {
     expect((await app.request("http://evil.example:47999/api/pages")).status).toBe(403);
     expect((await app.request("http://127.0.0.1:1/api/pages")).status).toBe(403);
     expect((await app.request(`${ORIGIN}/api/pages`, { headers: { host: "evil.example:47999" } })).status).toBe(403);
+    const rebound = await app.request(`${ORIGIN}/api/pages`, { headers: { host: "127.0.0.1.nip.io:47999" } });
+    expect(rebound.status).toBe(403);
+    expect(await rebound.json()).toEqual({ error: `not this server's host: 127.0.0.1.nip.io:47999; open ${ORIGIN}/` });
+    // the token page too, and with no token in the refusal
+    const ui = await app.request(`${ORIGIN}/`, { headers: { host: "127.0.0.1.nip.io:47999" } });
+    expect(ui.status).toBe(403);
+    expect(await ui.text()).not.toContain(TOKEN);
+  });
+
+  it("answers a request naming its own address", async () => {
+    expect((await app.request(`${ORIGIN}/api/pages`, { headers: { host: HOST } })).status).toBe(200);
   });
 });
 
@@ -280,8 +291,14 @@ describe("startServer", () => {
           req.on("error", reject);
           req.end();
         });
-      expect(await status(`localhost:${server.port}`)).toBe(200);
+      // only the address and port it bound: a public name resolving to 127.0.0.1 is refused,
+      // and so is every other spelling of this machine
+      expect(await status(`127.0.0.1:${server.port}`)).toBe(200);
+      expect(await status(`127.0.0.1.nip.io:${server.port}`)).toBe(403);
       expect(await status(`rebound.example:${server.port}`)).toBe(403);
+      expect(await status(`localhost:${server.port}`)).toBe(403);
+      expect(await status(`127.1:${server.port}`)).toBe(403);
+      expect(await status(`127.0.0.1`)).toBe(403);
     } finally {
       await server.close();
     }

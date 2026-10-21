@@ -15,8 +15,9 @@
 //
 // Writes need `Authorization: Bearer <token>`, which no archived page and no other site can
 // send: archives run no script, and another origin's request with that header is preflighted
-// and gets no CORS answer. Every request must name this server's own host, so a DNS name
-// rebound to 127.0.0.1 cannot read the library either.
+// and gets no CORS answer. Every request must name exactly the address and port the server
+// bound (`127.0.0.1:<port>`) in its Host header, so a page at a public name that resolves to
+// 127.0.0.1 (`127.0.0.1.nip.io`, DNS rebinding) cannot read the library or the token page.
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -56,7 +57,8 @@ export interface AppOptions {
   library: Library;
   /** The write token. */
   token: string;
-  /** The hosts (host:port) requests may name; filled in once the server knows its port. */
+  /** The host:port requests must name, exactly: the address and port the server bound, filled
+   *  in once it knows its port. Any other Host, `localhost` included, is refused. */
   hosts: ReadonlySet<string>;
   uiDir?: string | undefined;
 }
@@ -153,7 +155,8 @@ export function createApp(opts: AppOptions): Hono {
     const host = c.req.header("host");
     const urlHost = new URL(c.req.url).host;
     if (!opts.hosts.has(urlHost) || (host !== undefined && !opts.hosts.has(host))) {
-      return c.json({ error: `not this server's host: ${host ?? urlHost}` }, 403);
+      const own = [...opts.hosts][0];
+      return c.json({ error: `not this server's host: ${host ?? urlHost}${own ? `; open http://${own}/` : ""}` }, 403);
     }
     await next();
   });

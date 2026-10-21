@@ -47,10 +47,10 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
   const app = createApp({ library, token, hosts, uiDir: opts.uiDir });
   const want = opts.port ?? DEFAULT_PORT;
   let server: ServerType | undefined;
-  let port: number;
+  let bound: AddressInfo;
   try {
-    port = await new Promise<number>((resolve, reject) => {
-      server = serve({ fetch: app.fetch, hostname: DEFAULT_HOST, port: want }, (info: AddressInfo) => resolve(info.port));
+    bound = await new Promise<AddressInfo>((resolve, reject) => {
+      server = serve({ fetch: app.fetch, hostname: DEFAULT_HOST, port: want }, resolve);
       server.once("error", reject);
     });
   } catch (err) {
@@ -59,8 +59,9 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
     throw err;
   }
   const listening = server!;
-  hosts.add(`${DEFAULT_HOST}:${port}`);
-  hosts.add(`localhost:${port}`);
+  const { port } = bound;
+  // the one Host a request may name: the address and port it bound, never a name for them
+  hosts.add(`${bound.address}:${port}`);
   return {
     url: `http://${DEFAULT_HOST}:${port}/`,
     port,
