@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { importHtml } from "@page-archiver/core";
 import { openLibrary, type Library, type PageRecord } from "@page-archiver/library";
 import { createApp, segments, UI_CSP, type Hit } from "./api.ts";
-import { startServer } from "./index.ts";
+import { startServer, type RunningServer } from "./index.ts";
 
 /** Written out in full on purpose: the header must be these bytes, not whatever the constant says. */
 const EXACT_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; frame-src about:; form-action 'none'; base-uri 'none'; sandbox allow-scripts";
@@ -274,10 +274,42 @@ describe("segments", () => {
   });
 });
 
-describe("startServer", () => {
-  it("listens on 127.0.0.1 only, answers its own host, refuses another, and closes", async () => {
-    const server = await startServer({ library: lib, port: 0, uiDir });
+// The Host `127.1:<port>` is refused at every port, but not always by the app. @hono/node-server
+// (2.1.4) vets the Host header before the app sees it: its fast path (`reValidHost`) takes a port
+// only up to 59999. Above that it parses the Host with `new URL`, which rewrites `127.1` to
+// `127.0.0.1`, and answers 400 "Invalid host header" for the mismatch, so the app's own 403 never
+// runs. Port 0 lets the OS choose, and macOS chooses from 49152-65535, so a test that wanted 403
+// passed on CI's ubuntu runner and failed on a Mac whose ports had climbed past 60000. So each
+// case below binds a port from its own range, and both paths run on every machine.
+const REFUSED = [400, 403];
+const PORT_CASES = [
+  { name: "below 60000", from: 40000, to: 59999, shortForm: [403] },
+  { name: "60000 and above", from: 60000, to: 65535, shortForm: REFUSED },
+  { name: "any free port (0)", from: 0, to: 0, shortForm: REFUSED },
+];
+
+/** Starts a server on a free port in from..to (0..0: the OS picks one). */
+async function startInRange(from: number, to: number): Promise<RunningServer> {
+  if (to === 0) return startServer({ library: lib, port: 0, uiDir });
+  for (let tries = 0; tries < 20; tries++) {
+    const port = from + Math.floor(Math.random() * (to - from + 1));
     try {
+      return await startServer({ library: lib, port, uiDir });
+    } catch (err) {
+      if (!(err instanceof Error) || !err.message.includes("is in use")) throw err;
+    }
+  }
+  throw new Error(`no free port in ${from}-${to}`);
+}
+
+describe("startServer", () => {
+  it.each(PORT_CASES)("listens on 127.0.0.1 only, answers its own host, refuses another, and closes: port $name", async ({ from, to, shortForm }) => {
+    const server = await startInRange(from, to);
+    try {
+      if (to !== 0) {
+        expect(server.port).toBeGreaterThanOrEqual(from);
+        expect(server.port).toBeLessThanOrEqual(to);
+      }
       expect(server.url).toBe(`http://127.0.0.1:${server.port}/`);
       expect(server.token).toMatch(/^[0-9a-f]{48}$/);
       const res = await fetch(`${server.url}api/pages`);
@@ -297,7 +329,8 @@ describe("startServer", () => {
       expect(await status(`127.0.0.1.nip.io:${server.port}`)).toBe(403);
       expect(await status(`rebound.example:${server.port}`)).toBe(403);
       expect(await status(`localhost:${server.port}`)).toBe(403);
-      expect(await status(`127.1:${server.port}`)).toBe(403);
+      // 403 from the app, or 400 from @hono/node-server above port 59999 (see PORT_CASES)
+      expect(shortForm).toContain(await status(`127.1:${server.port}`));
       expect(await status(`127.0.0.1`)).toBe(403);
     } finally {
       await server.close();
