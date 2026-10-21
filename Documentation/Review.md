@@ -17,8 +17,8 @@ product page at 7.63%, which was finding 5: the same capture re-opened with the 
 differs by 0.00%. (The difference is read, not asserted: real pages move.)
 
 That excuse was then dropped (finding 17): the smoke run applies the offline assertion as it is,
-so the two pages whose only violations are resources the site refused are recorded misses.
-Final run, with every fix: 8 pages pass and the two recorded misses fail as recorded
+so the two pages whose only violations are resources the site refused became recorded misses
+(until consider 18, below, let both save cleanly). Final run then, with every fix: 8 pages pass and the two recorded misses fail as recorded
 (Playwright: 10 passed, a recorded miss that fails counts as passing). The eight are at or under
 1.25% difference, the product page at 0.00%. On that run, the recipe site's fourth capture of
 the day, the site also answered 48 of its own and its partners' fonts and icons with HTTP 403,
@@ -46,7 +46,7 @@ assertion, and passes again with the change restored.
 | # | Seen on | What | Done |
 |---|---|---|---|
 | 6 | mdn | the expected text was wrong: the page's heading is "HTML image embed element" | the list corrected |
-| 7 | substack, recipe | resources the site answers with an HTTP error (an avatar; ad-sync pixels) are kept as links, as designed and reported in the capture's warnings, so the archive refers to the network and the CSP refuses it | both pages recorded as misses with that reason; the report counts these violations apart (`splitViolations`, `test/smoke/list.ts`). See consider 18 |
+| 7 | substack, recipe | resources the site answers with an HTTP error (an avatar; ad-sync pixels) are kept as links, as designed and reported in the capture's warnings, so the archive refers to the network and the CSP refuses it | both pages recorded as misses with that reason, and the report counted these violations apart; consider 18 then removed both the misses and that split (d3273f7) |
 | 8 | README, `library.spec.ts` | both said the library test uses 20 fixture pages; the count follows `fixtures/pages/` | both now say every fixture page; the spec asserts at least 20 |
 
 ## From the second review (all fixed)
@@ -56,7 +56,7 @@ assertion, and passes again with the change restored.
 | 14 | `capturePosterFrames` counted videos with `querySelectorAll`, which stops at shadow roots, but picked them with a locator that does not: a video inside a player component got no poster frame, and one before a light-DOM video pushed the last one out | count and wait through the same `frame.locator("video")` (`videosReady`) | `media` fixture: a `<video-card>` with its video in an open shadow root |
 | 15 | the poster screenshot scrolled every box around the video into view (a carousel onto its video slide), and the snapshot froze that scroll position; only the window was reset, and only when a screenshot succeeded | every ancestor's and the window's scroll position is saved before each screenshot and put back after it, whatever happens | `media` fixture: the shadow-root video sits on the second slide of a scroll strip, which must stay on its first |
 | 16 | a smoke test that threw while opening the archive, or ran out of time, wrote no row, so the report left out exactly the failing page | a provisional failing row is written first; opening the archive is caught and reported as a problem | none automatic (the smoke run needs the network); `Testing.md` describes it |
-| 17 | the smoke run excused CSP violations for resources kept as links, so it was looser than the offline assertion it claims to run | every violation fails the page; kept-as-link ones are named apart | `list.test.ts` (`splitViolations`); recipe and substack are now recorded misses |
+| 17 | the smoke run excused CSP violations for resources kept as links, so it was looser than the offline assertion it claims to run | every violation fails the page; kept-as-link ones are named apart | `list.test.ts`, at the time; recipe and substack became recorded misses, until consider 18 let both save cleanly and the kept-as-link split went with it (d3273f7) |
 
 ## Decided by the owner
 
