@@ -198,6 +198,18 @@ describe("data: stylesheets", () => {
   });
 });
 
+describe("an @import of a sheet that does not parse", () => {
+  it("drops the sheet and says so, without fetching what it names", async () => {
+    const { ctx, asked, warnings } = site({ "http://s.test/css/b.css": `.b{color:red}.x{background:url(p.png)`, "http://s.test/css/p.png": PNG });
+    const out = await inlineCss(`@import "b.css";.a{color:blue}`, "http://s.test/css/a.css", ctx);
+    expect(warnings, "the capture's warnings").toEqual([expect.stringMatching(/^http:\/\/s\.test\/css\/b\.css: CSS did not parse \(.*\); dropped, with the @import in http:\/\/s\.test\/css\/a\.css$/)]);
+    expect(asked, "nothing the dropped sheet names is fetched").toEqual(["http://s.test/css/b.css"]);
+    expect(out).not.toContain(".x");
+    expect(out).toContain(".a{color:blue}");
+    expect(out, "the record of what was dropped asks nothing of the network").toContain("/* page-archiver dropped @import: http://s.test/css/b.css (CSS did not parse) */");
+  });
+});
+
 describe("CSS that does not parse", () => {
   it("sets every @import aside, string or url() form, and inlines the url()s", async () => {
     const { ctx, asked, warnings } = site({ "http://s.test/css/b.css": `.b{}`, "http://s.test/css/a.png": PNG });

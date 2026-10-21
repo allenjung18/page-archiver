@@ -881,12 +881,25 @@ export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, 
       }
       text = decode(res.bytes);
     }
+    // an imported sheet becomes rules in this one, so one that does not parse cannot be kept (its
+    // text, an unclosed block, would swallow the rules after it): it is dropped, and nothing it
+    // names is fetched
+    const dropped = (err: unknown) => {
+      ctx.warn(`${sheetLabel(url)}: CSS did not parse (${(err as Error).message.split("\n")[0]}); dropped, with the @import in ${label}`);
+      at.replaceWith(postcss.comment({ text: `page-archiver dropped @import: ${url.replace(/\*\//g, "*%2F")} (CSS did not parse)` }));
+    };
+    try {
+      postcss.parse(text, { from: undefined });
+    } catch (err) {
+      dropped(err);
+      continue;
+    }
     const inner = await inlineCss(text, url, ctx, chain);
     let parsed: Root;
     try {
       parsed = postcss.parse(inner, { from: undefined });
-    } catch {
-      at.remove();
+    } catch (err) {
+      dropped(err);
       continue;
     }
     at.replaceWith(...wrap(parsed.nodes.slice(), p));
