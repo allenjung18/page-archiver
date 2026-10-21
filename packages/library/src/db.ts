@@ -14,8 +14,15 @@ import { urlKey, VERSIONS_VIEW } from "./versions.ts";
 /** How long a write waits for another process's write lock before it fails. */
 export const BUSY_TIMEOUT_MS = 10_000;
 
-/** Bumped when the schema changes; an index of another version is rebuilt. */
-export const SCHEMA_VERSION = 1;
+/** Bumped when the schema (or what is indexed) changes; an index of another version is rebuilt. */
+export const SCHEMA_VERSION = 2;
+
+/**
+ * The private-use characters search wraps its hits in (the server's snippet marks). A page's own
+ * text can hold them (an icon font draws its glyphs there), so they are never indexed.
+ */
+const SNIPPET_MARKS = /[\uE000\uE001]/g;
+const unmarked = (text: string) => text.replace(SNIPPET_MARKS, "");
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS pages (
@@ -180,10 +187,10 @@ export function indexEntry(db: Database.Database, entry: FolderEntry): void {
       );
     db.prepare("INSERT INTO pages_fts (rowid, title, byline, site, text) VALUES (?, ?, ?, ?, ?)").run(
       lastInsertRowid,
-      m.title,
-      m.byline ?? "",
-      m.site ?? "",
-      entry.text,
+      unmarked(m.title),
+      unmarked(m.byline ?? ""),
+      unmarked(m.site ?? ""),
+      unmarked(entry.text),
     );
   });
   // BEGIN IMMEDIATE: a deferred transaction that reads first and writes second gets SQLITE_BUSY at

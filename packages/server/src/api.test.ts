@@ -94,6 +94,15 @@ describe("reading the library", () => {
     expect((await get("/api/search?q=")).status).toBe(400);
   });
 
+  it("marks the match, not the words around it, in a page whose text holds an icon font's glyph", async () => {
+    // Material Icons draws "error" as U+E000, the character the snippet's marks are made of
+    const html = save({ url: "https://icons.example/p", title: "Icon Page", body: '<i class="material-icons">\uE000</i> warning before the plumbago and after it \uE001 too', savedAt: "2026-09-01T00:00:00Z" });
+    await lib.importHtml(html);
+    const hits = (await (await get("/api/search?q=plumbago")).json()) as Hit[];
+    expect(hits.map((h) => h.title)).toEqual(["Icon Page"]);
+    expect(hits[0]!.snippet.filter((s) => s.hit).map((s) => s.text), "the marked runs").toEqual(["plumbago"]);
+  });
+
   it("names the sites and tags to filter by", async () => {
     expect(await (await get("/api/facets")).json()).toEqual({
       sites: [

@@ -42,7 +42,7 @@ export const UI_CSP = [
   "frame-ancestors 'none'",
 ].join("; ");
 
-/** What the snippet's hits are wrapped in before they are split into segments. */
+/** What the snippet's hits are wrapped in before they are split into segments (never indexed: db.ts). */
 const OPEN = "";
 const CLOSE = "";
 
