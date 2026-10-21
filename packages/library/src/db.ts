@@ -2,11 +2,17 @@
 // It is an index, never the record: everything in it comes from the capture folders, and
 // rebuildIndex() makes it again from them, in place and in one transaction, so a reader or a
 // concurrent `pa save` sees either the old index or the new one, never a file swapped under it.
-import { rmSync } from "node:fs";
+// The folders are read before that transaction takes the write lock, so a long scan holds up no
+// other writer; opening an index that is already current takes no write lock at all.
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { META_FILE } from "@page-archiver/core";
 import Database from "better-sqlite3";
-import { DB_FILE, scanLibrary, type FolderEntry, type Skipped } from "./layout.ts";
+import { DB_FILE, readCaptureFolder, scanLibrary, type FolderEntry, type Skipped } from "./layout.ts";
 import { urlKey, VERSIONS_VIEW } from "./versions.ts";
+
+/** How long a write waits for another process's write lock before it fails. */
+export const BUSY_TIMEOUT_MS = 10_000;
 
 /** Bumped when the schema changes; an index of another version is rebuilt. */
 export const SCHEMA_VERSION = 1;
@@ -72,13 +78,13 @@ function isUnreadable(err: unknown): boolean {
  * Opens the library's index (root/library.db), building it from the folders when it is new, of
  * another schema version, or not a readable database at all.
  */
-export function openIndex(root: string): Database.Database {
+export function openIndex(root: string, busyTimeoutMs: number = BUSY_TIMEOUT_MS): Database.Database {
   const path = join(root, DB_FILE);
   for (let attempt = 0; ; attempt++) {
     let db: Database.Database | undefined;
     try {
       db = new Database(path);
-      db.pragma("busy_timeout = 10000");
+      db.pragma(`busy_timeout = ${Math.max(0, Math.floor(busyTimeoutMs))}`);
       ensureIndex(db, root);
       return db;
     } catch (err) {
@@ -90,26 +96,51 @@ export function openIndex(root: string): Database.Database {
   }
 }
 
-/** Builds the index from the folders unless it is already at this schema version. Null when it was. */
+const isCurrent = (db: Database.Database) => (db.pragma("user_version", { simple: true }) as number) === SCHEMA_VERSION;
+
+/**
+ * Builds the index from the folders unless it is already at this schema version. Null when it was.
+ * A current index is read with no lock (a read-only command never waits for a writer); otherwise
+ * the folders are scanned, and the write lock is taken (and the version checked again: another
+ * process may have built it meanwhile) only to write the index.
+ */
 export function ensureIndex(db: Database.Database, root: string): RebuildReport | null {
-  return db
-    .transaction(() => ((db.pragma("user_version", { simple: true }) as number) === SCHEMA_VERSION ? null : rebuild(db, root)))
-    .immediate();
+  if (isCurrent(db)) return null;
+  const scan = scanLibrary(root);
+  return db.transaction(() => (isCurrent(db) ? null : rebuild(db, root, scan))).immediate();
 }
 
 /** Rebuilds the index from the library's folders, in one transaction: a failure leaves it as it was. */
 export function rebuildIndex(db: Database.Database, root: string): RebuildReport {
-  return db.transaction(() => rebuild(db, root)).immediate();
+  const scan = scanLibrary(root);
+  return db.transaction(() => rebuild(db, root, scan)).immediate();
 }
 
-function rebuild(db: Database.Database, root: string): RebuildReport {
-  const { entries, skipped } = scanLibrary(root);
+/**
+ * Writes the index from a scan taken before the write lock. Between the two another process may
+ * have added a page (its row is in the index, its folder was not in the scan: kept) or removed one
+ * (its folder is gone: dropped), so the folders are checked again, by a stat each.
+ */
+function rebuild(db: Database.Database, root: string, scan: { entries: FolderEntry[]; skipped: Skipped[] }): RebuildReport {
+  const has = (dir: string) => existsSync(join(root, dir, META_FILE));
+  const entries = scan.entries.filter((e) => has(e.dir));
+  const scanned = new Set(entries.map((e) => e.meta.id));
+  const hasPages = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'pages'").get() !== undefined;
+  const rows = hasPages ? (db.prepare("SELECT id, dir FROM pages").all() as Array<{ id: string; dir: string }>) : [];
+  for (const row of rows) {
+    if (scanned.has(row.id) || !has(row.dir)) continue;
+    try {
+      entries.push(readCaptureFolder(root, row.dir));
+    } catch {
+      // a folder that cannot be read now is the next reindex's to report
+    }
+  }
   db.exec(DROP);
   db.exec(SCHEMA);
   for (const e of entries) indexEntry(db, e);
   db.exec("INSERT INTO pages_fts (pages_fts) VALUES ('optimize')");
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
-  return { indexed: entries.length, skipped };
+  return { indexed: entries.length, skipped: scan.skipped };
 }
 
 /** Adds a capture to the index, replacing any row with its id. */

@@ -49,6 +49,8 @@ export class AlreadySavedError extends Error {
 export interface LibraryOptions {
   /** What save() captures with (tests); default core's capture(). */
   capture?: typeof capture | undefined;
+  /** How long a write waits for another process's write lock. Default BUSY_TIMEOUT_MS (10 s). */
+  busyTimeoutMs?: number | undefined;
 }
 
 export interface Library {
@@ -104,7 +106,7 @@ function writeAtomic(path: string, text: string): void {
 export function openLibrary(root: string, options: LibraryOptions = {}): Library {
   mkdirSync(root, { recursive: true });
   if (!statSync(root).isDirectory()) throw new Error(`not a directory: ${root}`);
-  const db = openIndex(root);
+  const db = openIndex(root, options.busyTimeoutMs);
 
   async function add(archive: Archive): Promise<PageRecord> {
     const dir = captureFolder(archive.meta);
@@ -112,7 +114,12 @@ export function openLibrary(root: string, options: LibraryOptions = {}): Library
     if (existsSync(abs)) throw new Error(`${dir} already exists in the library`);
     archive.files = await writeCapture(abs, archive);
     archive.file = archive.files.archive;
-    indexEntry(db, readCaptureFolder(root, dir));
+    try {
+      indexEntry(db, readCaptureFolder(root, dir));
+    } catch (err) {
+      // the capture is on disk and complete; only the index (rebuilt from the folders) lacks it
+      throw new Error(`saved to ${dir}, but not indexed (${(err as Error).message.split("\n")[0]}): pa reindex adds it`, { cause: err });
+    }
     return findPage(db, archive.meta.id);
   }
 

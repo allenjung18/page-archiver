@@ -275,6 +275,44 @@ describe("the index file", () => {
   });
 });
 
+describe("another process holding the write lock", () => {
+  /** A second connection inside BEGIN IMMEDIATE, as a `pa reindex` or `pa save` in another process is. */
+  function holdWriteLock(): Database.Database {
+    const other = new Database(join(lib.root, DB_FILE));
+    other.exec("BEGIN IMMEDIATE");
+    return other;
+  }
+
+  it("does not stop a read-only command from opening the library", () => {
+    lib.close();
+    const other = holdWriteLock();
+    try {
+      const root = lib.root;
+      expect(() => (lib = openLibrary(root, { busyTimeoutMs: 200 })), "opening a current index for reading").not.toThrow();
+      expect(lib.list()).toHaveLength(3);
+      expect(lib.search("zanzibarite")).toHaveLength(1);
+    } finally {
+      other.exec("ROLLBACK");
+      other.close();
+    }
+  }, 30_000);
+
+  it("makes a save that cannot be indexed say where it was saved and how to index it", async () => {
+    lib.close();
+    lib = openLibrary(lib.root, { busyTimeoutMs: 200 });
+    const other = holdWriteLock();
+    try {
+      const html = save({ url: "https://x.example/late", title: "Locked Out", body: "A plinthwort waits.", savedAt: "2026-08-02T00:00:00Z" });
+      await expect(lib.importHtml(html)).rejects.toThrow(/^saved to 2026\/08\/locked-out-[0-9a-z]{12}, but not indexed \(database is locked\): pa reindex adds it$/);
+    } finally {
+      other.exec("ROLLBACK");
+      other.close();
+    }
+    expect(lib.reindex().indexed).toBe(4);
+    expect(lib.search("plinthwort")).toHaveLength(1);
+  }, 30_000);
+});
+
 describe("tags", () => {
   it("writes tags to meta.json, so they survive a rebuild", () => {
     const page = lib.search("zanzibarite")[0]!;
