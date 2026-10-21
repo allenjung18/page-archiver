@@ -172,6 +172,16 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html, "no @import rule left to fetch").not.toMatch(/@import\s+(url\(|["'])/);
     },
   },
+  "data-sheets": {
+    withoutCsp: true,
+    check(html) {
+      // the linked data: sheet and the imported one are <style> text, their images inlined
+      expect(html, "no data: sheet left to load").not.toMatch(/<link[^>]+href="data:/);
+      expect(html).toMatch(/\.linked\{[^}]*url\("data:image\/png;base64,/);
+      expect(html).toMatch(/\.imported\{[^}]*url\("data:image\/png;base64,/);
+      expect(html, "no @import rule left to fetch").not.toMatch(/@import\s+(url\(|["'])/);
+    },
+  },
   "external-refs": {
     // the PDF is declared as one, so it is set aside without being fetched; the sprite that is
     // not there answers HTTP 404

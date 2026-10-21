@@ -87,6 +87,22 @@ describe("inlineDocument", () => {
     expect(live).not.toMatch(/https?:/);
   });
 
+  it("replaces a data: stylesheet link with a <style>, its absolute url()s inlined", async () => {
+    const { out, requested } = await run(
+      `<link rel="stylesheet" media="print" href="data:text/css,body%7Bbackground:url('http://cdn.test/img/p.png')%7D">`,
+      { "http://cdn.test/img/p.png": PNG },
+    );
+    expect(out).toContain(`<style media="print">body{background:url("${PNG_URI}")}</style>`);
+    expect(out, "no link left").not.toContain("<link");
+    expect(requested).toEqual(["http://cdn.test/img/p.png"]);
+  });
+
+  it("leaves a data: link that is not text/css as it is: a browser does not apply it", async () => {
+    const { out, requested } = await run(`<link rel="stylesheet" href="data:,body%7Bcolor:red%7D">`, {});
+    expect(out).toContain(`<link rel="stylesheet" href="data:,body%7Bcolor:red%7D">`);
+    expect(requested).toEqual([]);
+  });
+
   it("drops an alternate stylesheet with a warning", async () => {
     const { out, warnings } = await run(`<link rel="alternate stylesheet" href="/alt.css">`, { "http://site.test/alt.css": "a{}" });
     expect(out).not.toContain("alt.css");

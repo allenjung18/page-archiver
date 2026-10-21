@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stylesheets written as data: URLs</title>
+<!-- A stylesheet can be a data: URL (a <link href> or an @import of data:text/css), and its
+     absolute url()s load from the network as any sheet's do: the capture decodes the sheet and
+     inlines them. Opened from disk with no CSP, the archive must make no request. -->
+<link rel="stylesheet" href="{{ASSETS}}/css/article.css">
+<link rel="stylesheet" href="data:text/css,.linked%7Bheight:90px;background:%23d0dce8%20url(%22{{ASSETS}}/img/figure.png%22)%20no-repeat%7D">
+<style>
+  @import url("data:text/css,.imported%7Bheight:60px;background:%23e8e0d0%20url('{{ASSETS}}/img/hero.png')%20no-repeat%7D");
+</style>
+</head>
+<body>
+<main>
+  <article>
+    <h1>Stylesheets written as data: URLs</h1>
+    <p class="byline">By A. Fixture &middot; 20 October 2026</p>
+    <div class="linked"></div>
+    <p>The band above is drawn by a stylesheet linked as a data: URL; its image comes from the assets origin.</p>
+    <div class="imported"></div>
+    <p class="note">This one comes from an @import of a data: sheet.</p>
+  </article>
+</main>
+</body>
+</html>

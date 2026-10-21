@@ -176,8 +176,12 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
 `layer`/`supports`/media conditions (`parseImport`), recursively up to `MAX_IMPORT_DEPTH` (16),
 with a cycle guard; every `url()`, and every string argument of an `image-set()` (`imageSetStrings`;
 never a `type()` string), resolves against the sheet's own URL, never the page's
-(`resolveCssUrl`). An `@import` or `url()` that cannot be had is set aside (above). CSS that does
-not parse keeps its text with `url()`s inlined, and a warning.
+(`resolveCssUrl`). A stylesheet written as a `data:text/css` URL, linked or imported, is decoded
+(`dataCssText`, base64 or percent-encoded) and made self-contained the same way; a relative URL in
+it names nothing, live or in the archive, and becomes `url("data:,")`. A `data:` sheet of any
+other type is left as it is: a browser does not apply it. An `@import` or `url()` that cannot be
+had is set aside (above). CSS that does not parse keeps its text with `url()`s inlined, and a
+warning.
 
 Fonts (`inline/fonts.ts`): `createFontFilter` keeps an `@font-face` rule only when the page's
 `FontFaceSet` loaded that face (a rule the set does not know is kept); `pruneFontSrc` inlines

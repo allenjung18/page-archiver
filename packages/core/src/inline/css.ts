@@ -1,7 +1,9 @@
 // Stylesheets made self-contained: every @import replaced by the imported sheet (recursively,
 // wrapped in its layer/supports/media conditions, with a cycle guard), and every url() and
 // image-set() string replaced by a data: URI. Relative URLs resolve against the SHEET's own URL, never the page's: an
-// @import chain two folders deep must still find its backgrounds.
+// @import chain two folders deep must still find its backgrounds. A data: sheet (a <link> or an
+// @import of data:text/css) is decoded and made self-contained the same way; a relative URL in it
+// names nothing, as it does live.
 import postcss, { type AtRule, type ChildNode, type Root } from "postcss";
 import { utf8 } from "../bytes.ts";
 import type { Resource } from "../resources.ts";
@@ -39,6 +41,55 @@ export function resolveCssUrl(raw: string, base: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** The bytes of a data: URL's body: base64, or percent-encoded (a malformed escape is kept as written). */
+function dataBody(body: string, isBase64: boolean): Uint8Array {
+  const bytes = new TextEncoder().encode(body);
+  const decoded: number[] = [];
+  for (let i = 0; i < bytes.length; i++) {
+    const hex = bytes[i] === 0x25 ? String.fromCharCode(bytes[i + 1] ?? 0, bytes[i + 2] ?? 0) : "";
+    if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+      decoded.push(parseInt(hex, 16));
+      i += 2;
+    } else decoded.push(bytes[i]!);
+  }
+  if (!isBase64) return Uint8Array.from(decoded);
+  const b64 = String.fromCharCode(...decoded).replace(/[\s=]/g, "");
+  try {
+    return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  } catch {
+    return new Uint8Array();
+  }
+}
+
+/**
+ * The text of a data: URL stylesheet, or null when the value is not a data: URL of type text/css.
+ * A browser applies a sheet only when it is text/css (a bare `data:,` is text/plain), so any other
+ * type is left as it is: it styles nothing and asks nothing of the network.
+ */
+export function dataCssText(value: string): string | null {
+  const v = value.trim();
+  const m = /^data:([^,]*),/i.exec(v);
+  if (!m) return null;
+  const params = (m[1] ?? "").split(";").map((p) => p.trim().toLowerCase());
+  if (params[0] !== "text/css") return null;
+  const isBase64 = params.length > 1 && params.at(-1) === "base64";
+  let body = v.slice(m[0].length);
+  const hash = body.indexOf("#");
+  if (hash >= 0) body = body.slice(0, hash);
+  return decode(dataBody(body, isBase64));
+}
+
+/** A sheet's URL as a warning names it: a data: URL cut short. */
+export function sheetLabel(url: string): string {
+  return /^data:/i.test(url) && url.length > 48 ? `${url.slice(0, 47)}…` : url;
+}
+
+/** True when a url() value is relative (no scheme, not a fragment): against a data: sheet it names nothing. */
+function isRelativeRef(raw: string): boolean {
+  const value = unescapeCss(raw.trim());
+  return !!value && !value.startsWith("#") && !/^[a-z][a-z\d+.-]*:/i.test(value);
 }
 
 /** What a url() the capture could not have becomes: an empty data: URI, which fails as the fetch did and asks nothing of the network. */
@@ -170,7 +221,8 @@ export async function inlineUrls(
   const replacements = await Promise.all(
     refs.map(async (r) => {
       const url = resolveCssUrl(r.raw, base);
-      if (!url) return text.slice(r.index, r.index + r.length);
+      // in a data: sheet a relative URL fails live; left in the archive it would resolve against the file
+      if (!url) return /^data:/i.test(base) && isRelativeRef(r.raw) ? UNFETCHED_URL : text.slice(r.index, r.index + r.length);
       const res = await ctx.get(url);
       return res ? `url("${toDataUri(res.bytes, res.mime)}")` : unfetched(url, r.index);
     }),
@@ -251,11 +303,12 @@ function decode(bytes: Uint8Array): string {
  * dropped, as browsers do.
  */
 export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, stack: readonly string[] = []): Promise<string> {
+  const label = sheetLabel(sheetUrl);
   let root: Root;
   try {
     root = postcss.parse(css, { from: undefined });
   } catch (err) {
-    ctx.warn(`${sheetUrl}: CSS did not parse (${(err as Error).message.split("\n")[0]}); url()s inlined, @import left as is`);
+    ctx.warn(`${label}: CSS did not parse (${(err as Error).message.split("\n")[0]}); url()s inlined, @import left as is`);
     return inlineUrls(css, sheetUrl, ctx);
   }
 
@@ -286,29 +339,35 @@ export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, 
   const chain = [...stack, sheetUrl];
   for (const at of imports) {
     const p = parseImport(at.params);
-    const url = p ? resolveCssUrl(p.url, sheetUrl) : null;
+    // an @import of a data:text/css sheet is decoded here; the sheet's own URL is the data: URL
+    const data = p ? dataCssText(p.url) : null;
+    const url = p ? (data !== null ? p.url.trim() : resolveCssUrl(p.url, sheetUrl)) : null;
     if (!p || !url) {
-      ctx.warn(`${sheetUrl}: @import ${at.params} not understood; dropped`);
+      ctx.warn(`${label}: @import ${sheetLabel(at.params)} not understood; dropped`);
       at.remove();
       continue;
     }
     if (chain.includes(url)) {
-      ctx.warn(`${sheetUrl}: @import ${url} is a cycle; dropped`);
+      ctx.warn(`${label}: @import ${sheetLabel(url)} is a cycle; dropped`);
       at.remove();
       continue;
     }
     if (chain.length > MAX_IMPORT_DEPTH) {
-      ctx.warn(`${sheetUrl}: @import ${url} nested deeper than ${MAX_IMPORT_DEPTH}; dropped`);
+      ctx.warn(`${label}: @import ${sheetLabel(url)} nested deeper than ${MAX_IMPORT_DEPTH}; dropped`);
       at.remove();
       continue;
     }
-    const res = await ctx.get(url);
-    if (!res) {
-      // the sheet fails to load either way; a comment keeps the record and asks nothing of the network
-      at.replaceWith(postcss.comment({ text: unfetchedNote("@import", url).trim() }));
-      continue;
+    let text = data;
+    if (text === null) {
+      const res = await ctx.get(url);
+      if (!res) {
+        // the sheet fails to load either way; a comment keeps the record and asks nothing of the network
+        at.replaceWith(postcss.comment({ text: unfetchedNote("@import", url).trim() }));
+        continue;
+      }
+      text = decode(res.bytes);
     }
-    const inner = await inlineCss(decode(res.bytes), url, ctx, chain);
+    const inner = await inlineCss(text, url, ctx, chain);
     let parsed: Root;
     try {
       parsed = postcss.parse(inner, { from: undefined });

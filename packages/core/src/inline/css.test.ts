@@ -153,6 +153,36 @@ describe("inlineCss", () => {
   });
 });
 
+describe("data: stylesheets", () => {
+  it("inlines an @import of a data: sheet, its absolute url()s inlined too", async () => {
+    const { ctx, asked } = site({ "http://s.test/img/a.png": PNG });
+    const b64 = Buffer.from(`.b{background:url("http://s.test/img/a.png")}`).toString("base64");
+    const out = await inlineCss(
+      `@import url("data:text/css,.a%7Bbackground:url(http://s.test/img/a.png)%7D") print;@import "data:text/css;charset=utf-8;base64,${b64}";.x{y:1}`,
+      "http://s.test/css/site.css",
+      ctx,
+    );
+    expect(out, "the percent-encoded sheet, in its media condition").toContain(`@media print{.a{background:url("${PNG_URI}")}}`);
+    expect(out, "the base64 sheet").toContain(`.b{background:url("${PNG_URI}")}`);
+    expect(out, "no @import left").not.toMatch(/@import/);
+    expect(asked).toEqual(["http://s.test/img/a.png", "http://s.test/img/a.png"]);
+  });
+
+  it("sets a relative url() in a data: sheet aside: it names nothing live, and from disk it would name a file", async () => {
+    const { ctx, asked } = site({ "http://s.test/img/a.png": PNG });
+    const out = await inlineCss(`.a{background:url(img/a.png),url(#g)}`, "data:text/css,.a%7B%7D", ctx);
+    expect(out).toBe(`.a{background:url("data:,"),url(#g)}`);
+    expect(asked).toEqual([]);
+  });
+
+  it("leaves a data: import that is not text/css out, as a browser does", async () => {
+    const { ctx, warnings } = site({});
+    const out = await inlineCss(`@import url("data:text/plain,.a%7Bb:c%7D");.x{y:1}`, "http://s.test/", ctx);
+    expect(out).toBe(`.x{y:1}`);
+    expect(warnings[0]).toMatch(/not understood; dropped$/);
+  });
+});
+
 describe("image-set() string arguments", () => {
   it("inlines the string arguments of image-set() and -webkit-image-set(), as url() is inlined", async () => {
     const { ctx, asked } = site({ "http://s.test/img/a.png": PNG, "http://s.test/img/b.png": PNG });

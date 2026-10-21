@@ -27,7 +27,7 @@ import {
   type ParentNode,
 } from "../dom.ts";
 import { sanitizeDocument } from "../sanitize.ts";
-import { decodeCss, hasCssRefs, inlineCss, inlineUrls, resolveCssUrl, UNFETCHED_URL, urlTokens, type CssContext } from "./css.ts";
+import { dataCssText, decodeCss, hasCssRefs, inlineCss, inlineUrls, resolveCssUrl, sheetLabel, UNFETCHED_URL, urlTokens, type CssContext } from "./css.ts";
 import { effectiveMime, normalizeMime, toDataUri } from "./datauri.ts";
 
 export interface HtmlContext extends CssContext {
@@ -87,24 +87,31 @@ async function inlineAttr(el: Element, name: string, ctx: HtmlContext, dropOnFai
 
 async function inlineStylesheetLink(link: Element, ctx: HtmlContext): Promise<void> {
   const rel = tokens(link, "rel");
-  const href = fetchable(getAttr(link, "href"), ctx.baseUrl);
+  const raw = getAttr(link, "href");
+  // a data:text/css sheet is decoded here: its url()s are inlined as any sheet's are
+  const data = raw === null ? null : dataCssText(raw);
+  const href = data !== null ? raw!.trim() : fetchable(raw, ctx.baseUrl);
   if (!href) return;
   if (rel.includes("alternate")) {
-    ctx.warn(`${href}: alternate stylesheet dropped`);
+    ctx.warn(`${sheetLabel(href)}: alternate stylesheet dropped`);
     detach(link);
     return;
   }
-  const res = await ctx.get(href);
-  if (!res) {
-    setUnfetchedAside(link, "href", href);
-    return;
+  let text = data;
+  if (text === null) {
+    const res = await ctx.get(href);
+    if (!res) {
+      setUnfetchedAside(link, "href", href);
+      return;
+    }
+    text = decodeCss(res.bytes);
   }
   const style = createElement("style");
   for (const name of ["media", "title"]) {
     const v = getAttr(link, name);
     if (v !== null) setAttr(style, name, v);
   }
-  setStyleText(style, await inlineCss(decodeCss(res.bytes), href, ctx));
+  setStyleText(style, await inlineCss(text, href, ctx));
   replaceWith(link, style);
 }
 
