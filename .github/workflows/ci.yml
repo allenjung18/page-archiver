@@ -2,6 +2,9 @@ name: CI
 on:
   push:
   pull_request:
+# the workflow only reads the repository; it never pushes, comments or publishes
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
