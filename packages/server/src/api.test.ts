@@ -33,6 +33,8 @@ let lib: Library;
 let app: ReturnType<typeof createApp>;
 let uiDir: string;
 const captured: string[] = [];
+/** The server address each capture was told never to fetch for the page (CaptureOptions.server). */
+const refusedServers: unknown[] = [];
 
 beforeEach(async () => {
   tmp = mkdtempSync(join(tmpdir(), "pa-server-"));
@@ -40,6 +42,7 @@ beforeEach(async () => {
     // a stand-in for Chromium: the capture is the second article's save, at the URL asked for
     capture: async (url, opts) => {
       captured.push(url);
+      refusedServers.push((opts as { server?: unknown } | undefined)?.server);
       return importHtml(save({ ...ARTICLES[1]!, body: "The zanzibarite shelf, captured again.", savedAt: "2026-10-01T00:00:00Z" }), { url, versionOf: opts?.versionOf, tags: opts?.tags });
     },
   });
@@ -54,6 +57,7 @@ beforeEach(async () => {
   writeFileSync(join(uiDir, "assets", "app.js"), "console.log('ui');");
   writeFileSync(join(tmp, "secret.js"), "secret");
   captured.length = 0;
+  refusedServers.length = 0;
   app = createApp({ library: lib, token: TOKEN, hosts: new Set([HOST]), uiDir });
 });
 
@@ -188,6 +192,13 @@ describe("writes", () => {
       expect((await write("POST", "/api/save", body)).status, JSON.stringify(body)).toBe(400);
     }
     expect(captured).toEqual(["https://new.example/page"]);
+  });
+
+  it("save and re-capture tell the capture this server's own address, which a page may not have fetched", async () => {
+    const kelp = lib.search("zanzibarite")[0]!;
+    expect((await write("POST", "/api/save", { url: "https://new.example/page" })).status).toBe(201);
+    expect((await write("POST", `/api/pages/${kelp.id}/recapture`)).status).toBe(201);
+    expect(refusedServers, "the capture's server option, for each capture").toEqual([`${ORIGIN}/`, `${ORIGIN}/`]);
   });
 });
 

@@ -143,6 +143,11 @@ export function createApp(opts: AppOptions): Hono {
   const { library: lib, token } = opts;
   const uiDir = opts.uiDir ?? DEFAULT_UI_DIR;
   const app = new Hono();
+  // a capture never fetches this server for the page it saves (its UI page carries the token)
+  const ownUrl = () => {
+    const own = [...opts.hosts][0];
+    return own ? `http://${own}/` : undefined;
+  };
 
   app.onError((err, c) => {
     if (err instanceof HttpError) return c.json({ error: err.message }, err.status);
@@ -190,7 +195,7 @@ export function createApp(opts: AppOptions): Hono {
     const tags = stringList(body["tags"], "tags");
     const html = body["html"];
     if (html === undefined) {
-      const { page, archive } = await lib.save(url, { tags });
+      const { page, archive } = await lib.save(url, { tags, server: ownUrl() });
       return c.json({ page, warnings: archive.warnings }, 201);
     }
     // the page as the reader's own browser had it (logins, paywalls): untrusted HTML, which the
@@ -207,7 +212,7 @@ export function createApp(opts: AppOptions): Hono {
 
   app.post("/api/pages/:id/recapture", write, async (c) => {
     const old = pageOf(lib, c.req.param("id"));
-    const { page, archive } = await lib.save(old.url);
+    const { page, archive } = await lib.save(old.url, { server: ownUrl() });
     return c.json({ page, warnings: archive.warnings }, 201);
   });
 

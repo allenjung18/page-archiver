@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { basename, relative } from "node:path";
 import { capture, READER_FILE, serializeMeta, type Archive } from "@page-archiver/core";
 import { openLibrary, QueryError, resolveLibraryDir, type Library, type PageRecord, type SearchHit } from "@page-archiver/library";
-import { startServer } from "@page-archiver/server";
+import { DEFAULT_HOST, DEFAULT_PORT, startServer } from "@page-archiver/server";
 import { parseLibraryArgs, parseSaveArgs, parseServeArgs, UsageError, type LibraryArgs, type SaveArgs, type ServeArgs } from "./args.ts";
 
 const USAGE = `usage: pa <command> [args]
@@ -61,6 +61,8 @@ async function save(argv: string[]): Promise<number> {
     waitFor: args.waitFor,
     dismiss: args.dismiss,
     dismissDefaults: args.defaultDismiss,
+    // `pa serve`'s default address is never fetched for the page (its UI page carries the token)
+    server: `http://${DEFAULT_HOST}:${DEFAULT_PORT}/`,
   };
   if (!args.out && !args.dir) return saveToLibrary(args, options);
   const archive = await capture(args.url, {

@@ -4,7 +4,9 @@
 //   node fixtures/server.ts            pages on 47310, assets on 47311
 //   PAGES_PORT=0 ASSETS_PORT=0 ...     any free ports (printed)
 //
-// Pages may write {{ASSETS}}; it is replaced by the assets origin when served.
+// Pages may write {{ASSETS}}; it is replaced by the assets origin when served. {{ASSETS_LOCALHOST}}
+// is the same server by another loopback name (http://localhost:<assets port>), which a capture
+// must refuse to fetch for a page at 127.0.0.1.
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -93,7 +95,9 @@ function pagesHandler(assetsOrigin: () => string) {
       return;
     }
     if (!file || extname(file) !== ".html") return notFound(res);
-    const html = readFileSync(file, "utf8").replaceAll("{{ASSETS}}", assetsOrigin());
+    const html = readFileSync(file, "utf8")
+      .replaceAll("{{ASSETS_LOCALHOST}}", assetsOrigin().replace(`//${HOST}:`, "//localhost:"))
+      .replaceAll("{{ASSETS}}", assetsOrigin());
     res.writeHead(200, { "content-type": MIME[".html"], "cache-control": "no-store" });
     res.end(html);
   };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Snapshot } from "@page-archiver/serializer";
-import { buildFrame, type BuildContext } from "./capture.ts";
+import { buildFrame, fetchForPage, type BuildContext } from "./capture.ts";
 import { serializeDocument } from "./dom.ts";
 import { FRAME_ATTRIBUTE, type FrameCapture } from "./frames.ts";
 import type { Resolver } from "./resources.ts";
@@ -88,5 +88,50 @@ describe("buildFrame: child frames", () => {
     ]);
     const { ctx } = context();
     expect(serializeDocument(await buildFrame(top, ctx))).not.toContain(M);
+  });
+});
+
+describe("fetchForPage", () => {
+  type Answer = { status: number; headers?: Record<string, string>; body?: string };
+  function requester(answers: Record<string, Answer>) {
+    const asked: string[] = [];
+    const request = {
+      get: async (url: string) => {
+        asked.push(url);
+        const a = answers[url] ?? { status: 404 };
+        return { status: () => a.status, headers: () => a.headers ?? {}, body: async () => Buffer.from(a.body ?? ""), dispose: async () => undefined };
+      },
+    } as unknown as Parameters<typeof fetchForPage>[0];
+    return { request, asked };
+  }
+  const page = { pageUrl: "https://news.example/a", server: "http://127.0.0.1:47320/" };
+
+  it("refuses a private-network host and the library server before asking for them", async () => {
+    const { request, asked } = requester({});
+    await expect(fetchForPage(request, "http://127.0.0.1:47320/", page)).rejects.toThrow(/^refused: a loopback address other than the page's own host$/);
+    await expect(fetchForPage(request, "http://169.254.169.254/latest/meta-data/", page)).rejects.toThrow(/^refused: a link-local address/);
+    await expect(fetchForPage(request, "http://localhost:47320/", { pageUrl: "http://127.0.0.1:47310/p.html", server: page.server })).rejects.toThrow(
+      /^refused: a loopback address other than the page's own host$/,
+    );
+    await expect(fetchForPage(request, "http://127.0.0.1:47320/", { pageUrl: "http://127.0.0.1:47310/p.html", server: page.server })).rejects.toThrow(
+      /^refused: the page-archiver server \(http:\/\/127\.0\.0\.1:47320\), not the page itself$/,
+    );
+    expect(asked).toEqual([]);
+  });
+
+  it("follows a redirect only to a host it may fetch, checking each hop first", async () => {
+    const { request, asked } = requester({
+      "https://cdn.example/a.png": { status: 302, headers: { location: "/b.png" } },
+      "https://cdn.example/b.png": { status: 200, headers: { "content-type": "image/png" }, body: "png" },
+      "https://cdn.example/evil.png": { status: 301, headers: { location: "http://192.168.1.1/admin" } },
+    });
+    await expect(fetchForPage(request, "https://cdn.example/a.png", page)).resolves.toMatchObject({ status: 200, mime: "image/png" });
+    await expect(fetchForPage(request, "https://cdn.example/evil.png", page)).rejects.toThrow(/^refused: redirected to http:\/\/192\.168\.1\.1\/admin, a private network address/);
+    expect(asked).toEqual(["https://cdn.example/a.png", "https://cdn.example/b.png", "https://cdn.example/evil.png"]);
+  });
+
+  it("gives up on an endless redirect", async () => {
+    const { request } = requester({ "https://loop.example/": { status: 302, headers: { location: "/" } } });
+    await expect(fetchForPage(request, "https://loop.example/", page)).rejects.toThrow(/^more than 20 redirects$/);
   });
 });

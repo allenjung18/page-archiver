@@ -7,7 +7,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Snapshot } from "@page-archiver/serializer";
-import type { Frame } from "playwright";
+import type { APIRequestContext, Frame } from "playwright";
 import { ARCHIVE_FILE, TOOL_NAME, TOOL_VERSION } from "./archive.ts";
 import { assemble } from "./assemble.ts";
 import { openBrowser, type BrowserOptions } from "./browser.ts";
@@ -16,6 +16,7 @@ import { captureMhtml, MHTML_FILE } from "./extras/mhtml.ts";
 import { extractReader, READER_FILE, renderReader, type ReaderView } from "./extras/reader.ts";
 import { PDF_FILE, PNG_FILE, printPdf, screenshotPng } from "./extras/shot.ts";
 import { MAX_FRAME_DEPTH, snapshotFrames } from "./frames.ts";
+import { refusal } from "./hosts.ts";
 import { META_FILE, newPageId, normalizeTags, serializeMeta, type PageMeta } from "./meta.ts";
 import { capturePosterFrames } from "./posters.ts";
 import { createRecorder, DEFAULT_RESOURCE_CAP, DEFAULT_TOTAL_CAP } from "./recorder.ts";
@@ -58,6 +59,11 @@ export interface CaptureOptions extends BrowserOptions, SettleOptions {
   maxFrameDepth?: number | undefined;
   /** The clock (tests). */
   now?: (() => Date) | undefined;
+  /**
+   * The library server's address (`pa serve`): never fetched for the page, by any loopback name,
+   * unless it is the page itself (hosts.ts). A private-network host is refused without it.
+   */
+  server?: string | undefined;
 }
 
 export interface Archive {
@@ -119,6 +125,36 @@ async function attempt<T>(what: string, warn: (m: string) => void, make: () => P
   }
 }
 
+/** A redirect chain longer than this is a failed fetch (Playwright's own default). */
+export const MAX_REDIRECTS = 20;
+
+/**
+ * A resource the page never loaded, fetched from Node for the page at `pageUrl`. Node is outside
+ * the browser's private-network checks, so every hop is checked first: a target `refusal` names
+ * (a private-network host not the page's own, the library server), before the fetch or at a
+ * redirect, throws, and the resolver sets it aside with a warning.
+ */
+export async function fetchForPage(
+  request: Pick<APIRequestContext, "get">,
+  url: string,
+  page: { pageUrl: string; server?: string | undefined },
+): Promise<{ status: number; mime: string; bytes: Uint8Array }> {
+  let target = url;
+  for (let hop = 0; ; hop++) {
+    const why = refusal(target, page.pageUrl, page.server);
+    if (why) throw new Error(`refused: ${hop ? `redirected to ${target}, ` : ""}${why}`);
+    const res = await request.get(target, { timeout: 30_000, failOnStatusCode: false, maxRedirects: 0 });
+    const location = res.headers()["location"];
+    if (res.status() >= 300 && res.status() < 400 && location) {
+      await res.dispose().catch(() => undefined);
+      if (hop >= MAX_REDIRECTS) throw new Error(`more than ${MAX_REDIRECTS} redirects`);
+      target = new URL(location, target).href;
+      continue;
+    }
+    return { status: res.status(), mime: res.headers()["content-type"] ?? "", bytes: await res.body() };
+  }
+}
+
 let serializerSource: string | undefined;
 
 /** The serializer IIFE (packages/serializer/dist/serializer.iife.js). */
@@ -161,10 +197,7 @@ export async function capture(url: string, opts: CaptureOptions = {}): Promise<A
       recorder,
       resourceCap: opts.resourceCap ?? DEFAULT_RESOURCE_CAP,
       totalCap: opts.totalCap ?? DEFAULT_TOTAL_CAP,
-      fallback: async (u) => {
-        const res = await page.context().request.get(u, { timeout: 30_000, failOnStatusCode: false });
-        return { status: res.status(), mime: res.headers()["content-type"] ?? "", bytes: await res.body() };
-      },
+      fallback: (u) => fetchForPage(page.context().request, u, { pageUrl: snap.url || parsed.href, server: opts.server }),
     });
 
     const assembled = await assemble({ tree, sourceUrl: parsed.href, capturedAt, resolver, fetched: (u) => recorder.has(u), requested: (u) => recorder.saw(u), warnings });

@@ -22,7 +22,9 @@ export async function settle(page: Page): Promise<void> {
   await page.evaluate(async () => {
     window.scrollTo(0, 0);
     await document.fonts.ready;
-    await Promise.all([...document.images].map((img) => img.decode().catch(() => undefined)));
+    // bounded as the capture's own wait is (settle.ts): a hidden lazy image never decodes
+    const decodes = [...document.images].map((img) => img.decode().catch(() => undefined));
+    await Promise.race([Promise.all(decodes), new Promise((r) => setTimeout(r, 5_000))]);
   });
 }
 
@@ -34,6 +36,8 @@ export const LIVE_DISMISS: Readonly<Record<string, string>> = {
 /** Fixtures with images built not to load (the site answers an error): their `src`s, as written. */
 export const LIVE_BROKEN: Readonly<Record<string, RegExp[]>> = {
   unfetched: [/\/img\/gone-pixel\.gif$/],
+  // hidden and lazy: the browser never loads it
+  "private-host": [/^http:\/\/localhost:\d+\/img\/figure\.png$/],
 };
 
 /**

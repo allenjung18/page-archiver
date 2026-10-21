@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A page that names the reader's own machine</title>
+<link rel="stylesheet" href="{{ASSETS}}/css/article.css">
+</head>
+<body>
+<main>
+  <article>
+    <h1>A page that names the reader's own machine</h1>
+    <p class="byline">By A. Fixture &middot; 21 October 2026</p>
+    <img src="{{ASSETS}}/img/hero.png" width="640" height="240" alt="A blue gradient that does load">
+    <p>The hidden image below is never loaded by the browser, so the capture would fetch it itself.
+       Its address is another loopback name than this page's own host: a page could name the
+       library server's token page, a router or a cloud metadata address the same way, and have
+       the answer written into its archive. The capture refuses it and sets it aside.</p>
+    <img loading="lazy" style="display:none" src="{{ASSETS_LOCALHOST}}/img/figure.png" alt="">
+  </article>
+</main>
+</body>
+</html>

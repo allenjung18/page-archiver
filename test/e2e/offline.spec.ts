@@ -172,6 +172,16 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html, "no @import rule left to fetch").not.toMatch(/@import\s+(url\(|["'])/);
     },
   },
+  "private-host": {
+    // a hidden image the browser never loads names another loopback host than the page's own:
+    // the capture refuses to fetch it, so nothing from that host reaches the archive
+    warnings: [/^http:\/\/localhost:\d+\/img\/figure\.png: fetch failed \(refused: a loopback address other than the page's own host\); set aside$/],
+    withoutCsp: true,
+    check(html) {
+      expect(html, "the hidden image is set aside, its address kept as a record").toMatch(/<img style="display:none" alt="" data-page-archiver-unfetched-src="http:\/\/localhost:\d+\/img\/figure\.png">/);
+      expect(count(html, "<img src=\"data:image/png;base64,"), "only the hero image is inlined").toBe(1);
+    },
+  },
   "data-sheets": {
     // the last <style> has a stray "}": postcss cannot parse it, so it is written back as it came
     warnings: [/^http:\/\/127\.0\.0\.1:\d+\/data-sheets\.html: CSS did not parse \(.*\); url\(\)s inlined, @import set aside$/],

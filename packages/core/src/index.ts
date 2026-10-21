@@ -1,6 +1,6 @@
 export { ARCHIVE_CSP, ARCHIVE_FILE, TOOL_NAME, TOOL_VERSION } from "./archive.ts";
 export { assemble, buildFrame, type AssembleOptions, type Assembled, type BuildContext } from "./assemble.ts";
-export { capture, CAPTURE_FILES, documentLang, resolveExtras, writeCapture, type Archive, type CaptureOptions, type Extras } from "./capture.ts";
+export { capture, CAPTURE_FILES, fetchForPage, documentLang, resolveExtras, writeCapture, type Archive, type CaptureOptions, type Extras } from "./capture.ts";
 export { importHtml, readOwnStamp, readSavedHeader, readSingleFileHeader, type ImportOptions, type SavedHeader, type SingleFileHeader } from "./import.ts";
 export { extractReader, READER_CSS, READER_FILE, renderReader, type ReaderView } from "./extras/reader.ts";
 export { captureMhtml, MHTML_FILE, MhtmlError, parseMhtml, type Mhtml, type MhtmlPart } from "./extras/mhtml.ts";
@@ -11,4 +11,5 @@ export { sanitizeHtml } from "./sanitize.ts";
 export { readStamp, verifyStamp } from "./stamp.ts";
 export { DEFAULT_DISMISS_SELECTORS } from "./consent.ts";
 export { MAX_FRAME_DEPTH } from "./frames.ts";
+export { hostClass, refusal, type HostClass } from "./hosts.ts";
 export { FONTS_CAP_MS, fontsWarning, summarizeWarnings } from "./warnings.ts";
