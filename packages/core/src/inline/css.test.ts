@@ -320,3 +320,81 @@ describe("a url() or image-set() whose name is written with CSS escapes", () => 
     expect(asked, "the src the browser did not fetch is not fetched for the archive").toEqual(["http://s.test/f.woff2"]);
   });
 });
+
+describe("url() and strings read as the CSS tokenizer reads them", () => {
+  // Chromium reads a url() and a string as CSS Syntax's tokenizer does; each shape here is one it fetches
+  const BS = "\\";
+  const URL_A = `url("${PNG_URI}")`;
+
+  it("closes a url( or a string left open at the end of the text, as a style attribute ends", async () => {
+    const { ctx, asked } = site({ "http://s.test/a.png": PNG });
+    for (const text of [`url(a.png`, `url( a.png  `, `url("a.png`, `url('a.png`, `url( "a.png" `, String.raw`\75rl(a.png`]) {
+      expect(await inlineUrls(`#fff ${text}`, "http://s.test/", ctx), text).toBe(`#fff ${URL_A}`);
+    }
+    expect(await inlineUrls(`image-set("a.png`, "http://s.test/", ctx)).toBe(`image-set(${URL_A}`);
+    expect(await inlineUrls(`image-set('a.png' 1x, "a.png`, "http://s.test/", ctx)).toBe(`image-set(${URL_A} 1x, ${URL_A}`);
+    expect(asked).toHaveLength(9);
+    expect(hasCssRefs(String.raw`background: \75rl(a.png`), "an escaped name left open").toBe(true);
+  });
+
+  it("closes one left open at the end of a <style> postcss cannot parse, and reads an @import string left open", async () => {
+    for (const [css, tail] of [
+      [`.x{color:red}.y{background:url(a.png`, `.y{background:${URL_A}`],
+      [`.x{color:red}.y{background:url("a.png`, `.y{background:${URL_A}`],
+      [`.x{color:red}.y{background:image-set("a.png`, `.y{background:image-set(${URL_A}`],
+    ] as const) {
+      const { ctx, warnings } = site({ "http://s.test/css/a.png": PNG });
+      const out = await inlineCss(css, "http://s.test/css/site.css", ctx);
+      expect(out, css).toBe(`.x{color:red}${tail}`);
+      expect(warnings[0]).toMatch(/did not parse .*Unclosed (bracket|string)\); url\(\)s inlined, @import set aside$/);
+    }
+    const { ctx } = site({});
+    expect(await inlineCss(`@import "gone.css`, "http://s.test/css/site.css", ctx)).toBe(`/* page-archiver unfetched @import: http://s.test/css/gone.css */`);
+  });
+
+  it("reads a backslash before a newline in a string as a line continuation", async () => {
+    const { ctx, asked } = site({ "http://s.test/a.png": PNG, "http://s.test/css/b.css": `.b{background:url("../a${BS}\n.png")}` });
+    for (const nl of ["\n", "\r\n", "\r", "\f"]) {
+      expect(await inlineUrls(`url("a${BS}${nl}.png")`, "http://s.test/", ctx), JSON.stringify(nl)).toBe(URL_A);
+      expect(await inlineUrls(`url('a.png${BS}${nl}')`, "http://s.test/", ctx), JSON.stringify(nl)).toBe(URL_A);
+    }
+    expect(await inlineUrls(`image-set("a${BS}\n.png" 1x)`, "http://s.test/", ctx)).toBe(`image-set(${URL_A} 1x)`);
+    // a hex escape's one whitespace may be the newline: "\31\n" is "1", and the string goes on
+    expect(resolveCssUrl(`a${BS}31\n.png`, "http://s.test/")).toBe("http://s.test/a1.png");
+    const out = await inlineCss(`@import "css/b${BS}\n.css";.x{background:url("a${BS}\n.png") no-repeat}`, "http://s.test/site.css", ctx);
+    expect(out).toBe(`.b{background:${URL_A}}.x{background:${URL_A} no-repeat}`);
+    expect(parseImport(`"b${BS}\n.css" print`)).toMatchObject({ url: "b.css", media: "print" });
+    expect(asked.filter((u) => u.endsWith("/a.png"))).toHaveLength(11);
+  });
+
+  it("leaves a string a newline breaks, and an unquoted url() a backslash-newline breaks, alone: they fetch nothing", async () => {
+    const { ctx, asked } = site({ "http://s.test/a.png": PNG });
+    const text = `url("a\n.png") url(a${BS}\n.png) url(a b.png) url(a"b.png) image-set("a\n.png" 1x)`;
+    expect(await inlineUrls(`${text} url("a.png"`, "http://s.test/", ctx)).toBe(`${text} ${URL_A}`);
+    expect(asked).toEqual(["http://s.test/a.png"]);
+  });
+
+  it("skips comments between a url()'s string and its close paren", async () => {
+    const { ctx, asked } = site({ "http://s.test/a.png": PNG, "http://s.test/b.css": `.b{}` });
+    for (const text of [`url("a.png"/**/)`, `url( 'a.png' /* c */ )`, `url("a.png"/*)*/)`]) {
+      expect(await inlineUrls(`${text} no-repeat`, "http://s.test/", ctx), text).toBe(`${URL_A} no-repeat`);
+    }
+    expect(await inlineUrls(`url("a.png"/* left open`, "http://s.test/", ctx), "a comment the end of the text closes").toBe(URL_A);
+    // in a url token, "/*" is part of the value, not a comment: the quote after it makes a bad url
+    expect(await inlineUrls(`url(/**/"a.png")`, "http://s.test/", ctx)).toBe(`url(/**/"a.png")`);
+    expect(parseImport(`/* c */ url("b.css"/**/) /* d */ print`)).toMatchObject({ url: "b.css", media: "print" });
+    expect(await inlineCss(`@import url("b.css"/**/);.x{background:url("a.png"/**/)}`, "http://s.test/", ctx)).toBe(`.b{}.x{background:${URL_A}}`);
+    expect(asked.filter((u) => u.endsWith("/a.png"))).toHaveLength(5);
+  });
+
+  it("counts only space, tab and the newlines as whitespace: a no-break or ideographic space is part of an unquoted url()", async () => {
+    const { ctx, asked } = site({ "http://s.test/a.png?x%C2%A0y": PNG, "http://s.test/%E3%80%80a.png": PNG, "http://s.test/a.png%C2%A0": PNG });
+    expect(await inlineUrls(`url(a.png?x\u00a0y) url(\u3000a.png) url(a.png\u00a0) url(\ta.png\u00a0\n)`, "http://s.test/", ctx)).toBe(
+      Array(4).fill(URL_A).join(" "),
+    );
+    expect(asked).toEqual(["http://s.test/a.png?x%C2%A0y", "http://s.test/%E3%80%80a.png", "http://s.test/a.png%C2%A0", "http://s.test/a.png%C2%A0"]);
+    expect(resolveCssUrl("\u00a0#x", "http://s.test/"), "a no-break space before a # is not a fragment").toBe("http://s.test/%C2%A0#x");
+    // nor between the name and the string: a no-break space there makes the quote a bad url
+    expect(await inlineUrls(`url(\u00a0"a.png")`, "http://s.test/", ctx)).toBe(`url(\u00a0"a.png")`);
+  });
+});

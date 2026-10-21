@@ -1,0 +1,21 @@
+/* Linked by fixtures/pages/css-tokenizer-edges.html: a quoted url() continued over a line with a backslash, relative to this sheet. */
+body {
+  margin: 0;
+  background: #f4efe3;
+  color: #1d1b16;
+  font: 18px/1.6 Georgia, "Times New Roman", serif;
+}
+main {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+.byline {
+  color: #6b6455;
+  font-size: 15px;
+}
+.sheet-continued {
+  background-color: #c8e0d8;
+  background-image: url("../img/pa\
+per.png?te-sheet-continued");
+}

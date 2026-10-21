@@ -28,17 +28,91 @@ export interface CssContext {
 /** @import nesting deeper than this is dropped with a warning. */
 export const MAX_IMPORT_DEPTH = 16;
 
-// A url()'s arguments from its "(": "…" | '…' | bare — CSS escapes inside are kept as written and
-// unescaped on use. Its name is read by urlAt, which decodes escapes in it as Chromium does.
-const URL_ARGS = /\(\s*(?:"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|((?:[^)\s"'\\]|\\.)*))\s*\)/y;
+// url()s and strings are read as the CSS tokenizer (CSS Syntax 3, section 4) reads them, which is
+// how Chromium reads them: the end of the text closes an open url( or string, a backslash before a
+// newline in a string is a line continuation, comments are skipped between tokens, and only space,
+// tab and the newlines are whitespace (a no-break space is part of an unquoted url()).
 
+/** True when c is CSS whitespace: space, tab, LF, CR or FF. JS's \s also takes U+00A0 and U+3000, which CSS does not. */
+function isCssSpace(c: string | undefined): boolean {
+  return c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f";
+}
+
+/** True when c is a CSS newline (LF, CR or FF; the tokenizer reads CR LF as one). */
+function isNewline(c: string | undefined): boolean {
+  return c === "\n" || c === "\r" || c === "\f";
+}
+
+/** Where the whitespace and comments starting at text[i] end. */
+function skipSpaceAndComments(text: string, i: number): number {
+  for (;;) {
+    while (isCssSpace(text[i])) i++;
+    if (text[i] === "/" && text[i + 1] === "*") i = commentEnd(text, i);
+    else return i;
+  }
+}
+
+/**
+ * The escape whose backslash is text[k] (one not followed by a newline): the character it stands
+ * for and where it ends. A hex escape takes up to six digits and one whitespace after them (CR LF
+ * counts as one); a code point of 0, a surrogate or one past U+10FFFF is U+FFFD, as is a backslash
+ * at the end of the text.
+ */
+function escapeAt(text: string, k: number): { value: string; end: number } {
+  if (k + 1 >= text.length) return { value: "\uFFFD", end: k + 1 };
+  const hex = /^[0-9a-f]{1,6}/i.exec(text.slice(k + 1, k + 7));
+  if (hex) {
+    const cp = parseInt(hex[0], 16);
+    let end = k + 1 + hex[0].length;
+    if (text[end] === "\r" && text[end + 1] === "\n") end += 2;
+    else if (isCssSpace(text[end])) end++;
+    return { value: cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? "\uFFFD" : String.fromCodePoint(cp), end };
+  }
+  const cp = text.codePointAt(k + 1)!;
+  return { value: String.fromCodePoint(cp), end: k + 1 + (cp > 0xffff ? 2 : 1) };
+}
+
+/** Where a string's backslash at text[k] and what it escapes end: a newline after it (CR LF too) is a line continuation. */
+function stringEscapeEnd(text: string, k: number): number {
+  const next = text[k + 1];
+  if (next === undefined) return k + 1;
+  if (next === "\r" && text[k + 2] === "\n") return k + 3;
+  if (isNewline(next)) return k + 2;
+  return escapeAt(text, k).end;
+}
+
+/** A url() value or string as written, its escapes decoded: a backslash before a newline (a line continuation) or at the end stands for nothing. */
 function unescapeCss(s: string): string {
-  return s.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16))).replace(/\\(.)/g, "$1");
+  if (!s.includes("\\")) return s;
+  let out = "";
+  let k = 0;
+  while (k < s.length) {
+    if (s[k] !== "\\") {
+      out += s[k];
+      k++;
+    } else if (k + 1 >= s.length || isNewline(s[k + 1])) {
+      k = stringEscapeEnd(s, k);
+    } else {
+      const e = escapeAt(s, k);
+      out += e.value;
+      k = e.end;
+    }
+  }
+  return out;
+}
+
+/** A URL with what the URL parser strips from its ends (C0 controls and space) stripped; a no-break space is kept, as it is. */
+function trimUrl(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value.charCodeAt(start) <= 0x20) start++;
+  while (end > start && value.charCodeAt(end - 1) <= 0x20) end--;
+  return value.slice(start, end);
 }
 
 /** An absolute URL for a url() value, or null for values that are not fetched (data:, #id, empty). */
 export function resolveCssUrl(raw: string, base: string): string | null {
-  const value = unescapeCss(raw.trim());
+  const value = trimUrl(unescapeCss(raw));
   if (!value || value.startsWith("#")) return null;
   if (/^(data|about|blob|javascript):/i.test(value)) return null;
   try {
@@ -98,7 +172,7 @@ export function sheetLabel(url: string): string {
 
 /** True when a url() value is relative (no scheme, not a fragment): against a data: sheet it names nothing. */
 function isRelativeRef(raw: string): boolean {
-  const value = unescapeCss(raw.trim());
+  const value = trimUrl(unescapeCss(raw));
   return !!value && !value.startsWith("#") && !/^[a-z][a-z\d+.-]*:/i.test(value);
 }
 
@@ -131,12 +205,52 @@ function functionAt(text: string, i: number): { name: string; open: number } | n
   return id.name && text[id.end] === "(" ? { name: id.name.toLowerCase(), open: id.end } : null;
 }
 
-/** The url() starting at text[i], or null. Its name may be written with escapes: "\75rl(", "u\72l(" and "\55 RL(" are url(. */
+/** True when c is a code point the tokenizer does not allow in an unquoted url(): U+0000-0008, U+000B, U+000E-001F, U+007F. */
+function isNonPrintable(c: string): boolean {
+  const n = c.charCodeAt(0);
+  return n <= 0x08 || n === 0x0b || (n >= 0x0e && n <= 0x1f) || n === 0x7f;
+}
+
+/**
+ * The url() starting at text[i], or null. Its name may be written with escapes: "\75rl(", "u\72l(" and
+ * "\55 RL(" are url(. Read as the tokenizer reads it: `url(` then a string is a url() function, its
+ * string followed by nothing but whitespace and comments up to ")"; otherwise it is a url token, whose
+ * value ends at ")" or at whitespace followed by ")", and a quote, "(", a non-printable character, a
+ * backslash before a newline or anything after the whitespace makes it a bad url, which fetches
+ * nothing (null). In both, the end of the text closes it, as it closes a string.
+ */
 function urlAt(text: string, i: number, fn = functionAt(text, i)): CssRef | null {
   if (fn?.name !== "url") return null;
-  URL_ARGS.lastIndex = fn.open;
-  const m = URL_ARGS.exec(text);
-  return m ? { index: i, length: URL_ARGS.lastIndex - i, raw: m[1] ?? m[2] ?? m[3] ?? "" } : null;
+  let k = fn.open + 1;
+  while (isCssSpace(text[k])) k++;
+  const ref = (end: number, raw: string): CssRef => ({ index: i, length: Math.min(end, text.length) - i, raw });
+  if (text[k] === '"' || text[k] === "'") {
+    const s = stringAt(text, k);
+    if (s.bad) return null;
+    const close = skipSpaceAndComments(text, s.end);
+    return close >= text.length || text[close] === ")" ? ref(close + 1, s.raw) : null;
+  }
+  const start = k;
+  while (k < text.length) {
+    const c = text[k]!;
+    if (c === ")") return ref(k + 1, text.slice(start, k));
+    if (isCssSpace(c)) {
+      const close = skipSpace(text, k);
+      return close >= text.length || text[close] === ")" ? ref(close + 1, text.slice(start, k)) : null;
+    }
+    if (c === '"' || c === "'" || c === "(" || isNonPrintable(c)) return null;
+    if (c === "\\") {
+      if (isNewline(text[k + 1])) return null;
+      k = escapeAt(text, k).end;
+    } else k++;
+  }
+  return ref(text.length, text.slice(start));
+}
+
+/** Where the whitespace starting at text[i] ends (no comments: in a url token, "/*" is part of the value). */
+function skipSpace(text: string, i: number): number {
+  while (isCssSpace(text[i])) i++;
+  return i;
 }
 
 /** True when a font's src entry is a url() (its name may be written with escapes), not a local(). */
@@ -190,21 +304,10 @@ function identAt(text: string, i: number): { name: string; end: number } {
     const c = text[k]!;
     if (c === "\\") {
       const next = text[k + 1];
-      if (next === "\n" || next === "\r" || next === "\f") break; // not an escape: the name ends
-      if (next === undefined) return { name: name + "�", end: k + 1 };
-      const hex = /^[0-9a-f]{1,6}/i.exec(text.slice(k + 1, k + 7));
-      if (hex) {
-        const cp = parseInt(hex[0], 16);
-        name += cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? "�" : String.fromCodePoint(cp);
-        k += 1 + hex[0].length;
-        // one whitespace ends a hex escape and is part of it (CR LF counts as one)
-        if (text[k] === "\r" && text[k + 1] === "\n") k += 2;
-        else if (/[ \t\n\r\f]/.test(text[k] ?? "")) k++;
-      } else {
-        const cp = text.codePointAt(k + 1)!;
-        name += String.fromCodePoint(cp);
-        k += cp > 0xffff ? 3 : 2;
-      }
+      if (isNewline(next)) break; // not an escape: the name ends
+      const e = escapeAt(text, k);
+      name += e.value;
+      k = e.end;
     } else if (/[\w-]/.test(c) || c.charCodeAt(0) >= 0x80) {
       name += c;
       k++;
@@ -232,16 +335,21 @@ function unescapeImportName(at: AtRule): void {
   at.raws.afterName = " ";
 }
 
-/** The quoted string starting at text[i]: where it ends and what it holds as written; null when it is not closed on its line. */
-function stringAt(text: string, i: number): { end: number; raw: string } | null {
+/**
+ * The quoted string starting at text[i]: where it ends and what it holds as written. As the tokenizer
+ * reads it, the end of the text closes it; a backslash before a newline continues it on the next line;
+ * a newline without one ends it as a bad string (`bad`, which fetches nothing), just before that newline.
+ */
+function stringAt(text: string, i: number): { end: number; raw: string; bad: boolean } {
   const quote = text[i];
-  for (let k = i + 1; k < text.length; k++) {
+  let k = i + 1;
+  while (k < text.length) {
     const c = text[k];
-    if (c === "\\") k++;
-    else if (c === quote) return { end: k + 1, raw: text.slice(i + 1, k) };
-    else if (c === "\n") return null;
+    if (c === quote) return { end: k + 1, raw: text.slice(i + 1, k), bad: false };
+    if (isNewline(c)) return { end: k, raw: text.slice(i + 1, k), bad: true };
+    k = c === "\\" ? stringEscapeEnd(text, k) : k + 1;
   }
-  return null;
+  return { end: text.length, raw: text.slice(i + 1), bad: false };
 }
 
 /** Where the comment starting at text[i] ends. */
@@ -260,20 +368,20 @@ function scanImageSet(text: string, from: number, found: CssRef[]): number {
   let i = from;
   while (i < text.length) {
     const c = text[i]!;
-    if (/\s/.test(c)) {
+    if (isCssSpace(c)) {
       i++;
     } else if (c === "/" && text[i + 1] === "*") {
       i = commentEnd(text, i);
     } else if (c === '"' || c === "'") {
       const s = stringAt(text, i);
-      if (!s) return text.length; // a bad string: the rest of the value is not read as CSS
-      // only the image of an option: a string in type() or another function is not a URL
-      if (depth === 0 && atOption) found.push({ index: i, length: s.end - i, raw: s.raw });
+      // only the image of an option: a string in type() or another function is not a URL; a bad string fetches nothing
+      if (depth === 0 && atOption && !s.bad) found.push({ index: i, length: s.end - i, raw: s.raw });
       atOption = false;
       i = s.end;
     } else if (c === "\\") {
       atOption = false;
-      i += 2;
+      // a backslash before a newline is a lone "\", not an escape
+      i = isNewline(text[i + 1]) ? i + 1 : escapeAt(text, i).end;
     } else {
       atOption = false;
       if (c === "(") depth++;
@@ -297,7 +405,7 @@ export function imageSetStrings(text: string): CssRef[] {
   while (i < text.length) {
     const c = text[i]!;
     if (c === "/" && text[i + 1] === "*") i = commentEnd(text, i);
-    else if (c === '"' || c === "'") i = stringAt(text, i)?.end ?? i + 1;
+    else if (c === '"' || c === "'") i = stringAt(text, i).end;
     else if (isNameChar(c)) {
       // a name is read whole, its escapes decoded: "image-s\65t(" is an image-set(
       const fn = functionAt(text, i);
@@ -359,19 +467,22 @@ interface ImportParams {
 
 /** Splits `@import` params into the URL and its layer(), supports() and media conditions. */
 export function parseImport(params: string): ImportParams | null {
-  let rest = params.trim();
+  // the URL is a string or a url(), read as the tokenizer reads them; comments around it are skipped
+  const start = skipSpaceAndComments(params, 0);
   let raw: string;
-  const quoted = /^(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/.exec(rest);
-  if (quoted) {
-    raw = quoted[1] ?? quoted[2] ?? "";
-    rest = rest.slice(quoted[0].length);
+  let end: number;
+  if (params[start] === '"' || params[start] === "'") {
+    const s = stringAt(params, start);
+    if (s.bad) return null;
+    raw = s.raw;
+    end = s.end;
   } else {
-    const u = urlAt(rest, 0);
+    const u = urlAt(params, start);
     if (!u) return null;
     raw = u.raw;
-    rest = rest.slice(u.length);
+    end = start + u.length;
   }
-  rest = rest.trim();
+  let rest = params.slice(skipSpaceAndComments(params, end)).trim();
   let layer: string | null = null;
   const layerMatch = /^layer(?:\(\s*([^)]*?)\s*\))?(?=\s|$|supports\()/i.exec(rest);
   if (layerMatch) {
@@ -412,12 +523,12 @@ function decode(bytes: Uint8Array): string {
 
 /** Where the quoted string or parenthesised group starting at text[i] ends (an unclosed one runs to the end). */
 function groupEnd(text: string, i: number): number {
-  if (text[i] !== "(") return stringAt(text, i)?.end ?? text.length;
+  if (text[i] !== "(") return stringAt(text, i).end;
   let depth = 0;
   for (let k = i; k < text.length; k++) {
     const c = text[k];
     if (c === "\\") k++;
-    else if (c === '"' || c === "'") k = (stringAt(text, k)?.end ?? text.length) - 1;
+    else if (c === '"' || c === "'") k = stringAt(text, k).end - 1;
     else if (c === "(") depth++;
     else if (c === ")" && --depth === 0) return k + 1;
   }
@@ -437,7 +548,7 @@ function setImportsAside(css: string, sheetUrl: string): string {
   while (i < css.length) {
     const c = css[i]!;
     if (c === "/" && css[i + 1] === "*") i = commentEnd(css, i);
-    else if (c === '"' || c === "'") i = stringAt(css, i)?.end ?? i + 1;
+    else if (c === '"' || c === "'") i = stringAt(css, i).end;
     else if (c === "\\") i += 2;
     else if (c === "@" && !/[\w\-\\]/.test(css[i - 1] ?? "") && isImportAt(css, i + 1)) {
       // the name may be written with escapes ("@\69mport"), which Chromium decodes

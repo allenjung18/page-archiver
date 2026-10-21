@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>url() read as the CSS tokenizer reads it</title>
+<!-- Chromium reads a url() and a string as the CSS tokenizer does: the end of the text closes an
+     unclosed url( or string, a backslash before a newline in a string is a line continuation, a
+     comment between a url()'s string and its ")" is skipped, and only space, tab and the newlines
+     are whitespace (a no-break space or an ideographic space in an unquoted url() is part of it).
+     Each box below is drawn by one such url(), in a <style>, a style attribute, the linked sheet or
+     an SVG attribute, and each must be inlined: opened from disk with no CSP, the archive must
+     make no request. A <style> that ends inside a url( or a string is one postcss cannot parse. -->
+<link rel="stylesheet" href="{{ASSETS}}/css/tokenizer-edges.css">
+<style>
+  .grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+  .box { width: 200px; height: 80px; background-color: #d8e0c8; background-repeat: no-repeat; background-size: 200px 80px; }
+  .continued { background-image: url("{{ASSETS}}/img/lazy-1.png?te-style-continued\
+") }
+  .commented { background-image: url("{{ASSETS}}/img/lazy-2.png?te-style-comment"/* between the string and the paren */) }
+  .nbsp { background-image: url({{ASSETS}}/img/lazy-3.png?te-style-nbsp x) }
+  .ideo { background-image: url({{ASSETS}}/img/lazy-4.png?te-style-ideographic　x) }
+</style>
+<style>
+  .open-url { background-color: #c8d0e0; background-image: url({{ASSETS}}/img/lazy-5.png?te-style-open</style>
+<style>
+  .open-string { background-color: #e0c8d0; background-image: url("{{ASSETS}}/img/lazy-6.png?te-style-string</style>
+<style>
+  .open-image-set { background-color: #e8d8c0; background-image: image-set("{{ASSETS}}/img/lazy-7.png?te-style-image-set</style>
+</head>
+<body>
+<main>
+  <article>
+    <h1>url() read as the CSS tokenizer reads it</h1>
+    <p class="byline">By A. Fixture &middot; 21 October 2026</p>
+    <div class="grid">
+      <div class="box continued"></div>
+      <div class="box commented"></div>
+      <div class="box nbsp"></div>
+      <div class="box ideo"></div>
+      <div class="box open-url"></div>
+      <div class="box open-string"></div>
+      <div class="box open-image-set"></div>
+      <div class="box sheet-continued"></div>
+      <div class="box" style="background-image: url({{ASSETS}}/img/lazy-8.png?te-attr-open"></div>
+      <div class="box" style='background-image: url("{{ASSETS}}/img/figure.png?te-attr-string'></div>
+      <div class="box" style='background-image: image-set("{{ASSETS}}/img/hero.png?te-attr-image-set'></div>
+      <div class="box" style='background-image: url("{{ASSETS}}/img/paper.png?te-attr-continued\
+")'></div>
+      <div class="box" style='background-image: url("{{ASSETS}}/img/figure.png?te-attr-comment" /**/ )'></div>
+      <div class="box" style="background-image: url({{ASSETS}}/img/hero.png?te-attr-nbsp x)"></div>
+    </div>
+    <svg viewBox="0 0 600 120" width="600" height="120">
+      <rect x="20" y="20" width="120" height="80" fill="#36c" cursor="url({{ASSETS}}/img/figure.png?te-svg-cursor x) 2 2, pointer"/>
+    </svg>
+  </article>
+</main>
+</body>
+</html>

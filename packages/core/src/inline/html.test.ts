@@ -703,3 +703,22 @@ describe("inlineDocument: an SVG <set> or <animate> that writes into a URL attri
     expect(requested).toEqual([]);
   });
 });
+
+describe("inlineDocument: a url() read as the CSS tokenizer reads it", () => {
+  // the end of an attribute closes an open url( or string; a no-break space is part of an unquoted url()
+  it("inlines one in a style attribute and an SVG cursor, and copies in what an SVG filter names, as Chromium reads them", async () => {
+    const { doc, out, warnings } = await run(
+      `<div id="d" style="background: url('/a.png"></div><div id="e" style="background: url(/a.png?x\u00a0y"></div>` +
+        `<svg><rect id="r" filter="url(http://cdn.test/fx/fx.svg#soft" cursor="url(/a.png?c\u00a0d) 2 2, pointer"/>` +
+        `<rect id="m" mask='url("http://cdn.test/fx/fx.svg#soft"/**/)'/></svg>`,
+      { "http://site.test/a.png": PNG, "http://site.test/a.png?x%C2%A0y": PNG, "http://site.test/a.png?c%C2%A0d": PNG, "http://cdn.test/fx/fx.svg": { mime: SVG, body: FX } },
+    );
+    expect(warnings).toEqual([]);
+    expect(getAttr(byId(doc, "d"), "style")).toBe(`background: url("${PNG_URI}")`);
+    expect(getAttr(byId(doc, "e"), "style")).toBe(`background: url("${PNG_URI}")`);
+    expect(getAttr(byId(doc, "r"), "filter")).toBe(`url(#${SPRITE_ID_PREFIX}0-soft)`);
+    expect(getAttr(byId(doc, "r"), "cursor")).toBe(`url("${PNG_URI}") 2 2, pointer`);
+    expect(getAttr(byId(doc, "m"), "mask")).toBe(`url(#${SPRITE_ID_PREFIX}0-soft)`);
+    expect(out, "no address left that the archive would fetch").not.toMatch(/cdn\.test|a\.png/);
+  });
+});

@@ -226,6 +226,21 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html).not.toMatch(/\/(img|fonts)\/[\w-]+\.(png|woff2?)|fx\.svg/);
     },
   },
+  "css-tokenizer-edges": {
+    // a url( or a string left open at the end of a <style> is CSS postcss cannot parse
+    warnings: [
+      /^http:\/\/127\.0\.0\.1:\d+\/css-tokenizer-edges\.html: CSS did not parse \(.*Unclosed bracket\); url\(\)s inlined, @import set aside$/,
+      /^http:\/\/127\.0\.0\.1:\d+\/css-tokenizer-edges\.html: CSS did not parse \(.*Unclosed string\); url\(\)s inlined, @import set aside$/,
+      /^http:\/\/127\.0\.0\.1:\d+\/css-tokenizer-edges\.html: CSS did not parse \(.*Unclosed string\); url\(\)s inlined, @import set aside$/,
+    ],
+    withoutCsp: true,
+    check(html) {
+      // every url() and image-set() string the tokenizer reads is inlined: the <style>s, the
+      // style attributes, the linked sheet and the SVG cursor (15 in all)
+      expect(count(html, /url\((?:&quot;|")data:image\/png;base64,/g)).toBe(15);
+      expect(html, "no url() of the fixture left to fetch").not.toMatch(/\.png\?te-/);
+    },
+  },
   "external-refs": {
     // the PDF is declared as one, so it is set aside without being fetched; the sprite that is
     // not there answers HTTP 404
