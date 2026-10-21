@@ -42,6 +42,17 @@ describe("form state", () => {
     expect($<HTMLInputElement>("t").getAttribute("value")).toBe("old");
   });
 
+  it("never writes a password or a file input's value, whatever the case of type", () => {
+    document.body.innerHTML = `<input id="u" type="PASSWORD" value="pw"><input id="m" type="Password" value="pw2">
+      <input id="f" type="FILE">`;
+    (document.getElementById("u") as unknown as HTMLInputElement).value = "typed-secret";
+    (document.getElementById("m") as unknown as HTMLInputElement).value = "typed-secret-2";
+    const { html } = snapshot();
+    const out = parsed(html);
+    for (const id of ["u", "m", "f"]) expect(out.getElementById(id)!.hasAttribute("value"), `#${id} value`).toBe(false);
+    expect(html).not.toMatch(/pw|typed-secret/);
+  });
+
   it("leaves elements that are not form controls alone", () => {
     const live = document.createElement("div");
     const clone = live.cloneNode() as Element;

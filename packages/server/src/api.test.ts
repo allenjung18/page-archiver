@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,6 +11,8 @@ import { startServer, type RunningServer } from "./index.ts";
 
 /** Written out in full on purpose: the header must be these bytes, not whatever the constant says. */
 const EXACT_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; frame-src about:; form-action 'none'; base-uri 'none'; sandbox allow-scripts";
+/** Written out in full on purpose, like EXACT_CSP: the page that holds the write token. */
+const EXACT_UI_CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const TOKEN = "0123456789abcdef0123456789abcdef";
 const HOST = "127.0.0.1:47999";
 const ORIGIN = `http://${HOST}`;
@@ -264,6 +267,7 @@ describe("the UI", () => {
   it("writes the token into the page and serves it under its own CSP", async () => {
     const res = await get("/");
     expect(res.headers.get("content-security-policy")).toBe(UI_CSP);
+    expect(res.headers.get("content-security-policy"), "the UI's policy, byte for byte").toBe(EXACT_UI_CSP);
     expect(UI_CSP).not.toMatch(/unsafe/);
     expect(await res.text()).toContain(`<meta name="pa-token" content="${TOKEN}">`);
     const js = await get("/assets/app.js");
@@ -324,6 +328,24 @@ async function startInRange(from: number, to: number): Promise<RunningServer> {
 }
 
 describe("startServer", () => {
+  it("refuses a port in use with a message naming --port, and the library it was given by path is still usable", async () => {
+    const holder = createServer();
+    await new Promise<void>((resolve) => holder.listen(0, "127.0.0.1", resolve));
+    const port = (holder.address() as { port: number }).port;
+    const path = join(tmp, "inuse-lib");
+    try {
+      await expect(startServer({ library: path, port, uiDir })).rejects.toThrow(new RegExp(`port ${port} is in use: pass another with --port`));
+    } finally {
+      await new Promise<void>((resolve) => holder.close(() => resolve()));
+    }
+    const again = openLibrary(path);
+    try {
+      expect(again.reindex().indexed).toBe(0);
+    } finally {
+      again.close();
+    }
+  });
+
   it.each(PORT_CASES)("listens on 127.0.0.1 only, answers its own host, refuses another, and closes: port $name", async ({ from, to, shortForm }) => {
     const server = await startInRange(from, to);
     try {

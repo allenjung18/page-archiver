@@ -13,6 +13,8 @@ describe("the popup", () => {
     expect(describeResult({ kind: "downloaded", url: "u", title: "t", filename: "page-archiver/x.html", downloadId: 1, reason: "the library server is not running", warnings: [] })).toBe(
       "Downloaded x.html instead: the library server is not running",
     );
+    expect(describeResult({ kind: "saved", url: "u", title: "t", pageId: "p", libraryUrl: "l", warnings: ["a"] }), "one warning is singular").toBe("Saved ✓ (1 warning)");
+    expect(describeResult({ kind: "downloaded", url: "u", title: "t", filename: "x.html", downloadId: 1, reason: "r", warnings: ["a"] })).toBe("Downloaded x.html instead: r (1 warning)");
     expect(describeResult({ kind: "failed", url: "u", error: "boom" })).toBe("Not saved: boom");
   });
 });

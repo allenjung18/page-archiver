@@ -122,8 +122,10 @@ describe("inlineCss", () => {
   it("drops a sheet that imports itself", async () => {
     const { ctx, warnings } = site({ "http://s.test/self.css": `@import "self.css";.s{x:1}` });
     const out = await inlineCss(`@import "self.css";`, "http://s.test/", ctx);
-    expect(out).toContain(".s{x:1}");
+    expect(out.split(".s{x:1}"), "the sheet is inlined once, not once per lap").toHaveLength(2);
+    expect(out).toBe(".s{x:1}");
     expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/self\.css is a cycle; dropped/);
   });
 
   it("wraps an import in its layer, supports and media conditions", async () => {

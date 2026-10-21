@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SERVER_KEY, TOKEN_KEY } from "./protocol.ts";
-import { DEFAULT_SERVER, deliver, normalizeServer, tokenFromPage, type Fetch } from "./server.ts";
+import { ANSWER_TIMEOUT_MS, DEFAULT_SERVER, deliver, normalizeServer, tokenFromPage, type Fetch } from "./server.ts";
 import { memoryStore } from "./testing.ts";
 
 const T1 = "a".repeat(48);
@@ -62,6 +62,30 @@ describe("deliver", () => {
   it("says unreachable when nothing answers, and refused when the server says no", async () => {
     expect(await deliver(fakeServer({ token: T1, down: true }).fetchFn, memoryStore(), upload)).toMatchObject({ kind: "unreachable", reason: expect.stringMatching(/not running/) });
     expect(await deliver(fakeServer({ token: T1, status: 500 }).fetchFn, memoryStore(), upload)).toEqual({ kind: "refused", reason: "HTTP 500: disk full" });
+  });
+
+  it("aborts a request the server never answers after ANSWER_TIMEOUT_MS, and sends no credentials", async () => {
+    const store = memoryStore({ [TOKEN_KEY]: T1 });
+    const clock = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(clock.signal);
+    let seen: RequestInit | undefined;
+    // a server that never answers: the request ends only when its signal aborts
+    const hung: Fetch = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        seen = init;
+        init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+      });
+    try {
+      const outcome = deliver(hung, store, upload);
+      await new Promise((r) => setTimeout(r, 20));
+      expect(timeout, "the bound is ANSWER_TIMEOUT_MS").toHaveBeenCalledWith(ANSWER_TIMEOUT_MS);
+      expect(seen?.credentials).toBe("omit");
+      clock.abort(new DOMException("The operation timed out.", "TimeoutError"));
+      const result = await Promise.race([outcome, new Promise<string>((r) => setTimeout(() => r("still hanging"), 300))]);
+      expect(result).toMatchObject({ kind: "unreachable", reason: expect.stringMatching(/did not answer in 120 s/) });
+    } finally {
+      timeout.mockRestore();
+    }
   });
 
   it("says the server did not answer in time, not that it is not running, when the POST times out", async () => {

@@ -116,7 +116,8 @@ describe("inlineDocument", () => {
   it("drops an alternate stylesheet with a warning", async () => {
     const { out, warnings } = await run(`<link rel="alternate stylesheet" href="/alt.css">`, { "http://site.test/alt.css": "a{}" });
     expect(out).not.toContain("alt.css");
-    expect(warnings).toHaveLength(1);
+    expect(out, "the whole <link> goes, not only its href").not.toMatch(/<link|stylesheet/);
+    expect(warnings).toEqual(["http://site.test/alt.css: alternate stylesheet dropped"]);
   });
 
   it("inlines <style> text against the page's base URL", async () => {

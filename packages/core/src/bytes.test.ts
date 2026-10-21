@@ -40,6 +40,14 @@ describe("utf8 and utf8Length", () => {
     });
   }
 
+  it("turns a malformed sequence into U+FFFD instead of throwing, as Buffer does", () => {
+    for (const bad of [[0xff], [0xc3], [0x61, 0xe2, 0x82, 0x62], [0xed, 0xa0, 0x80]]) {
+      const bytes = Uint8Array.from(bad);
+      expect(utf8(bytes), bad.join(",")).toBe(Buffer.from(bytes).toString("utf8"));
+      expect(utf8(bytes)).toContain("\ufffd");
+    }
+  });
+
   it("keeps a leading BOM, as Buffer does", () => {
     expect(utf8(Buffer.from("﻿body{}"))).toBe("﻿body{}");
   });

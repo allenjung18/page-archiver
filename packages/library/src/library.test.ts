@@ -354,6 +354,24 @@ describe("tags", () => {
     expect(() => lib.get("zzzzzzzz")).toThrow(/no page/);
     expect(() => lib.get("ab")).toThrow(/not a page id/);
   });
+
+  it("refuses a prefix two page ids share, and remove by it deletes nothing", () => {
+    const base = lib.list()[0]!;
+    const baseDir = lib.pathOf(base, "");
+    const folders = ["abcd1111xxxx", "abcd2222xxxx"].map((id, i) => {
+      const dir = join(lib.root, "2026/08", `twin-${id}`);
+      mkdirSync(dir, { recursive: true });
+      const meta = JSON.parse(readFileSync(join(baseDir, META_FILE), "utf8")) as PageMeta;
+      writeFileSync(join(dir, META_FILE), JSON.stringify({ ...meta, id, url: `https://twins.example/${i}`, capturedAt: "2026-08-02T10:00:00Z" }));
+      writeFileSync(join(dir, ARCHIVE_FILE), readFileSync(join(baseDir, ARCHIVE_FILE)));
+      return dir;
+    });
+    lib.reindex();
+    expect(lib.get("abcd1111xxxx").id).toBe("abcd1111xxxx");
+    expect(() => lib.get("abcd")).toThrow(/more than one page id starts with abcd/);
+    expect(() => lib.remove("abcd")).toThrow(/more than one page id starts with abcd/);
+    for (const dir of folders) expect(existsSync(dir), dir).toBe(true);
+  });
 });
 
 describe("remove", () => {
