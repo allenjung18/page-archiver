@@ -183,6 +183,23 @@ describe("data: stylesheets", () => {
   });
 });
 
+describe("CSS that does not parse", () => {
+  it("sets every @import aside, string or url() form, and inlines the url()s", async () => {
+    const { ctx, asked, warnings } = site({ "http://s.test/css/b.css": `.b{}`, "http://s.test/css/a.png": PNG });
+    const out = await inlineCss(
+      `@import "gone.css";@IMPORT url(b.css) print;/* @import "c.css"; */.q{content:"@import 'd.css';"}.x{background:url(a.png)`,
+      "http://s.test/css/site.css",
+      ctx,
+    );
+    expect(out, "the string-form @import is set aside").toContain(`/* page-archiver unfetched @import: http://s.test/css/gone.css */`);
+    expect(out, "the url() form too, not inlined as a sheet of its own").toContain(`/* page-archiver unfetched @import: http://s.test/css/b.css */`);
+    expect(out, "a comment and a string are not rules").toContain(`/* @import "c.css"; */.q{content:"@import 'd.css';"}`);
+    expect(out).toContain(PNG_URI);
+    expect(asked).toEqual(["http://s.test/css/a.png"]);
+    expect(warnings[0]).toMatch(/did not parse .*; url\(\)s inlined, @import set aside$/);
+  });
+});
+
 describe("image-set() string arguments", () => {
   it("inlines the string arguments of image-set() and -webkit-image-set(), as url() is inlined", async () => {
     const { ctx, asked } = site({ "http://s.test/img/a.png": PNG, "http://s.test/img/b.png": PNG });

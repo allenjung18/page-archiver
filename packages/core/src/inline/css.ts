@@ -297,6 +297,51 @@ function decode(bytes: Uint8Array): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
+/** Where the quoted string or parenthesised group starting at text[i] ends (an unclosed one runs to the end). */
+function groupEnd(text: string, i: number): number {
+  if (text[i] !== "(") return stringAt(text, i)?.end ?? text.length;
+  let depth = 0;
+  for (let k = i; k < text.length; k++) {
+    const c = text[k];
+    if (c === "\\") k++;
+    else if (c === '"' || c === "'") k = (stringAt(text, k)?.end ?? text.length) - 1;
+    else if (c === "(") depth++;
+    else if (c === ")" && --depth === 0) return k + 1;
+  }
+  return text.length;
+}
+
+/**
+ * Every @import in CSS postcss could not parse, replaced by a comment naming its URL, as an
+ * unfetched import is: written back as it came, the archive would fetch it, opened from disk.
+ * Comments and strings are read past, so an "@import" inside one is left alone.
+ */
+function setImportsAside(css: string, sheetUrl: string): string {
+  let out = "";
+  let last = 0;
+  let i = 0;
+  while (i < css.length) {
+    const c = css[i]!;
+    if (c === "/" && css[i + 1] === "*") i = commentEnd(css, i);
+    else if (c === '"' || c === "'") i = stringAt(css, i)?.end ?? i + 1;
+    else if (c === "\\") i += 2;
+    else if (c === "@" && /^@import(?![\w\-\\])/i.test(css.slice(i, i + 8)) && !IDENT_CHAR.test(css[i - 1] ?? "")) {
+      let end = i + "@import".length;
+      while (end < css.length && css[end] !== ";" && css[end] !== "{" && css[end] !== "}") {
+        if (css[end] === '"' || css[end] === "'" || css[end] === "(") end = groupEnd(css, end);
+        else if (css[end] === "/" && css[end + 1] === "*") end = commentEnd(css, end);
+        else end++;
+      }
+      const p = parseImport(css.slice(i + "@import".length, end));
+      const url = p ? (resolveCssUrl(p.url, sheetUrl) ?? (dataCssText(p.url) !== null ? sheetLabel(p.url.trim()) : null)) : null;
+      if (css[end] === ";") end++;
+      out += css.slice(last, i) + `/*${unfetchedNote("@import", url ?? "(not understood)")}*/`;
+      last = i = end;
+    } else i++;
+  }
+  return out + css.slice(last);
+}
+
 /**
  * The stylesheet `css`, fetched from (or written in a page at) `sheetUrl`, made self-contained.
  * `stack` is the chain of sheets importing this one; an @import back into it is a cycle and is
@@ -308,8 +353,8 @@ export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, 
   try {
     root = postcss.parse(css, { from: undefined });
   } catch (err) {
-    ctx.warn(`${label}: CSS did not parse (${(err as Error).message.split("\n")[0]}); url()s inlined, @import left as is`);
-    return inlineUrls(css, sheetUrl, ctx);
+    ctx.warn(`${label}: CSS did not parse (${(err as Error).message.split("\n")[0]}); url()s inlined, @import set aside`);
+    return inlineUrls(setImportsAside(css, sheetUrl), sheetUrl, ctx);
   }
 
   const imports: AtRule[] = [];

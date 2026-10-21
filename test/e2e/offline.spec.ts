@@ -173,12 +173,16 @@ const FIXTURES: Record<string, Fixture> = {
     },
   },
   "data-sheets": {
+    // the last <style> has a stray "}": postcss cannot parse it, so it is written back as it came
+    warnings: [/^http:\/\/127\.0\.0\.1:\d+\/data-sheets\.html: CSS did not parse \(.*\); url\(\)s inlined, @import set aside$/],
     withoutCsp: true,
     check(html) {
       // the linked data: sheet and the imported one are <style> text, their images inlined
       expect(html, "no data: sheet left to load").not.toMatch(/<link[^>]+href="data:/);
       expect(html).toMatch(/\.linked\{[^}]*url\("data:image\/png;base64,/);
       expect(html).toMatch(/\.imported\{[^}]*url\("data:image\/png;base64,/);
+      // the sheet that does not parse keeps its rules, and its @import is a comment
+      expect(html).toMatch(/\/\* page-archiver unfetched @import: http:\/\/127\.0\.0\.1:\d+\/css\/article\.css \*\/\s*\.note \{ color: #6b6455; \}/);
       expect(html, "no @import rule left to fetch").not.toMatch(/@import\s+(url\(|["'])/);
     },
   },

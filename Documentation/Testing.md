@@ -32,7 +32,7 @@ running one (`reuseExistingServer: false`), so a server from another checkout ca
 fixtures here. `npm run fixtures` starts it by hand.
 
 One page per hard case of a capture, in `fixtures/pages/`: adopted sheets, canvas, a cookie
-wall, CSS-in-JS, stylesheets written as `data:` URLs
+wall, CSS-in-JS, stylesheets written as `data:` URLs and one that does not parse
 (`data-sheets`), form state, nested same- and cross-origin iframes, `srcdoc` frames nested past
 the depth cap (`deep-frames`), an `@import` chain, lazy images,
 external references (`<object>`, `<embed>` and SVG `<use>` of a sprite file, in
