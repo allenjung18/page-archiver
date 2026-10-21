@@ -222,6 +222,8 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html).toMatch(
         /cursor="url\(&quot;data:,&quot;\) 2 2, url\(&quot;data:image\/png;base64,[^"&]+&quot;\) 4 4, pointer" data-page-archiver-unfetched-cursor="http:\/\/127\.0\.0\.1:\d+\/sprites\/gone-cursor\.png"/,
       );
+      // an SVG image with both hrefs has its image in each: a browser reads the plain one
+      expect(html).toMatch(/<image [^>]*xlink:href="data:image\/png;base64,[^"]+" href="data:image\/png;base64,/);
       expect(html).not.toMatch(/\/img\/(hero|figure|paper)\.png/);
     },
   },

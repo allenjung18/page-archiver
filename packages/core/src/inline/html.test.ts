@@ -135,6 +135,31 @@ describe("inlineDocument", () => {
     expect(getAttr(byId(doc, "s"), "href")).toBe(PNG_URI);
   });
 
+  it("inlines an SVG image into both its href and its xlink:href, which a browser would read the plain one of", async () => {
+    const files = { "http://cdn.test/a.png": PNG };
+    const { doc, out } = await run(
+      `<svg><image id="s" xlink:href="https://cdn.test/a.png" href="http://cdn.test/a.png"></image>` +
+        `<filter><feImage id="f" xlink:href="http://cdn.test/a.png" href="http://cdn.test/a.png"></feImage></filter>` +
+        `<image id="g" xlink:href="http://cdn.test/gone-x.png" href="http://cdn.test/gone.png"></image></svg>`,
+      files,
+    );
+    for (const id of ["s", "f"]) {
+      const hrefs = byId(doc, id).attrs.filter((a) => a.name === "href");
+      expect(hrefs.map((a) => a.value), id).toEqual([PNG_URI, PNG_URI]);
+    }
+    // the one that cannot be had is set aside under the URL the browser would have fetched, every href gone
+    expect(byId(doc, "g").attrs.filter((a) => a.name === "href")).toEqual([]);
+    expect(getAttr(byId(doc, "g"), `${UNFETCHED_ATTRIBUTE_PREFIX}href`)).toBe("http://cdn.test/gone.png");
+    const live = out.replace(new RegExp(`${UNFETCHED_ATTRIBUTE_PREFIX}[a-z]+="[^"]*"`, "g"), "");
+    expect(live).not.toMatch(/https?:/);
+  });
+
+  it("leaves an feImage naming an element of the page as it is, never fetching the page itself", async () => {
+    const { doc, requested } = await run(`<svg><circle id="dot" r="2"/><filter><feImage id="f" href="#dot"></feImage></filter></svg>`, {});
+    expect(getAttr(byId(doc, "f"), "href")).toBe("#dot");
+    expect(requested).toEqual([]);
+  });
+
   it("inlines every icon rel the browser fetches, apple-touch-icon-precomposed included", async () => {
     const files = { "http://site.test/p.png": PNG };
     const { doc, out } = await run(

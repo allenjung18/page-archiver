@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Effects from other files</title>
 <!-- SVG attributes whose url() names an element in another file (a filter, a mask, a clip path,
-     a marker, a paint server), an SVG cursor attribute's url() images, and image-set() options
-     written as strings. Each is kept (the element is copied into the page, the image inlined) or
+     a marker, a paint server), an SVG cursor attribute's url() images, an SVG image with both href
+     and xlink:href, and image-set() options written as strings. Each is kept (the element is copied into the page, the image inlined) or
      set aside: the archive asks nothing of the network, even opened from disk with no CSP to
      refuse it. -->
 <link rel="stylesheet" href="{{ASSETS}}/css/article.css">
@@ -31,6 +31,7 @@
         <path d="M450 100 L500 20 L560 100" fill="none" stroke="url(/sprites/fx.svg#sun) #c47a2c" stroke-width="4"
               marker-start="url(/sprites/fx.svg#dot)" marker-mid="url(/sprites/fx.svg#dot)" marker-end="url(/sprites/fx.svg#dot)"/>
         <rect x="20" y="105" width="560" height="10" fill="url(/sprites/gone.svg#paint) #6b6455"/>
+        <image x="300" y="40" width="32" height="32" xlink:href="{{ASSETS}}/img/figure.png" href="{{ASSETS}}/img/figure.png"/>
       </svg>
     </div>
     <p>An image chosen from a set is written as a string, not a url(), and is kept all the same.</p>

@@ -366,13 +366,35 @@ function copyFromSprite(sprite: Sprite & { byId: Map<string, Element> }, id: str
 }
 
 /**
+ * An SVG element's href. xlink:href too: parse5 names it href, in the xlink namespace; a plain href
+ * wins over it, as in a browser, and a page may set both.
+ */
+function svgHref(el: Element): string | null {
+  return (el.attrs.find((a) => a.name === "href" && !a.namespace) ?? el.attrs.find((a) => a.name === "href"))?.value ?? null;
+}
+
+/**
+ * An SVG <image> or <feImage>: its image is inlined into every href it has, xlink:href included, so
+ * neither is left naming the network. A fragment-only href names an element of the page itself.
+ */
+async function inlineSvgImage(el: Element, ctx: HtmlContext): Promise<void> {
+  const raw = svgHref(el);
+  if (raw === null || raw.trim().startsWith("#")) return;
+  const url = fetchable(raw, ctx.baseUrl);
+  if (!url) return;
+  const res = await ctx.get(url);
+  if (!res) return setUnfetchedAside(el, "href", url);
+  const uri = toDataUri(res.bytes, res.mime);
+  for (const a of el.attrs) if (a.name === "href") a.value = uri;
+}
+
+/**
  * An SVG <use> that takes its element from another file (an icon sprite): the element, and what it
  * refers to, is copied into the document and the <use> made to point at the copy. One that cannot
  * be had is set aside, with a warning.
  */
 async function inlineUse(el: Element, ctx: HtmlContext, state: SpriteState): Promise<void> {
-  // xlink:href too: parse5 names it href, in the xlink namespace; a plain href wins over it, as in a browser
-  const raw = (el.attrs.find((a) => a.name === "href" && !a.namespace) ?? el.attrs.find((a) => a.name === "href"))?.value ?? null;
+  const raw = svgHref(el);
   if (raw === null || raw.trim().startsWith("#")) return;
   const url = fetchable(raw, ctx.baseUrl);
   if (!url) return;
@@ -547,7 +569,7 @@ async function inlineElements(elements: readonly Element[], ctx: HtmlContext, sp
         break;
       case "image": // SVG <image href> / <image xlink:href>
       case "feImage":
-        jobs.push(inlineAttr(el, "href", ctx));
+        jobs.push(inlineSvgImage(el, ctx));
         break;
       case "object":
       case "embed": {
