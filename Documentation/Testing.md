@@ -22,6 +22,13 @@ in `test/`. The workspace packages resolve to their sources (`resolve.alias`), s
 needed first. DOM tests run in happy-dom with stylesheet, script and frame loading switched off
 (`environmentOptions.happyDOM.settings`), so a unit test cannot reach the network.
 
+Tests that pin a case a reader could get wrong: a password or file input typed `PASSWORD`
+(`hardening.test.ts`); two page ids sharing a prefix, which `get` and `remove` refuse
+(`library.test.ts`); the reader UI's CSP written out byte for byte and `startServer` on a port in
+use (`api.test.ts`); the extension's `ANSWER_TIMEOUT_MS` abort and `credentials: "omit"`
+(`server.test.ts`); a malformed UTF-8 sequence (`bytes.test.ts`); the singular warning in the popup
+(`popup.test.ts`).
+
 ## The fixture server (`fixtures/server.ts`)
 
 Two origins on `HOST` (`127.0.0.1`): the pages on `DEFAULT_PAGES_PORT` (47310) and the assets
@@ -83,7 +90,10 @@ All in Chromium at `VIEWPORT` (1280x900, scale 1), `retries: 0` (`playwright.con
 - **`offline-harness.spec.ts`** proves that harness can see what the offline spec asserts is
   absent: a network request, a CSP violation, a script, and a request Chromium makes only from a
   secure context.
-- **`cli.spec.ts`**: `pa save <url> -o <file>` writes the archive.
+- **`cli.spec.ts`**: `pa save <url> -o <file>` writes the archive; the exit codes (2 for an unknown
+  command, an unknown id or a usage error, 1 for a search with no hit, a missing import file, an
+  unloadable page or `pa serve` on a port in use, 0 for `pa help`); `pa serve` and `pa open` with no
+  browser opener installed.
 - **`extras.spec.ts`**: `pa save -d <dir>` writes the archive, the reader copy, MHTML, PNG, PDF
   and a `meta.json` valid against `META_SCHEMA`; the reader and MHTML copies open offline.
 - **`library.spec.ts`**: every capture fixture saved with `pa save` and the SingleFile saves

@@ -118,3 +118,18 @@ except recipe at 3.75% (read, not asserted: real pages move).
 | 53 | code review | a capture folder left without `meta.json` (a failed `writeCapture`) and a `.deleting-*` folder left by a failed delete are never cleaned up; each reindex reports the first, and the second is not seen | read from the code; removing either is a delete the library does on its own |
 | 54 | code review | the per-resource cap is checked after the whole body is read (`res.body()`, `arrayBuffer()`), so a huge or endless response is held in memory until the 30 s timeout | read from the code; streaming with a running byte count changes both fetch paths |
 | 20 | (review) | an image in an `<object>` or `<embed>` becomes an `<img>`, so the page's `img` rules apply to it and its own `object`/`embed` rules no longer do (on a page whose CSS makes every `img` a block, it moves the text below it) | an `<img>` is the only way to keep the picture: a `data:` URL in the `<object>` would be a document, which the sanitizer removes for the script it can carry. The `external-refs` fixture styles both alike |
+
+## Docs and tests
+
+The docs now match the code at the symbols they name: the README says **Save page** and the
+download name `<host>-<title>-<time>.html`, and documents the exit codes, `pa help`, the options
+that exclude each other, `--port 0`, `PA_LIBRARY` (set but empty means the default), `PAGES_PORT`
+and `ASSETS_PORT`, and the `/assets` and HEAD routes; the route comment in `api.ts` lists them too.
+Ids and wording from outside this repo are gone from Architecture.md, two fixtures and
+this file's Source column. Ten tests were added or strengthened, each shown to fail against a
+mutant of the code it guards: `PASSWORD` in upper case; an ambiguous id prefix (and `remove` by it);
+the UI's CSP byte for byte; `ANSWER_TIMEOUT_MS`; a port in use; the exit codes; a sheet that imports
+itself (exact output, once); an alternate stylesheet (the whole `<link>` goes); the popup's single
+warning; malformed UTF-8. Not done, in risk order: the extension's own capture proven end to end
+(`api.ts` `html === undefined`), a re-capture of a page that now fails, and two `pa save` of one URL
+at once.
