@@ -22,7 +22,7 @@ const snap: Snapshot = {
 };
 
 /** A tab with one frame whose content script answers with `snap`. */
-function env(opts: { serverUp: boolean; url?: string; html?: string; responses?: Record<string, () => Response> }) {
+function env(opts: { serverUp: boolean; url?: string; html?: string; responses?: Record<string, (init?: RequestInit) => Response> }) {
   const api: ContentApi = {
     mark: () => [],
     frameId: () => null,
@@ -32,6 +32,7 @@ function env(opts: { serverUp: boolean; url?: string; html?: string; responses?:
   const g = globalThis as { __pageArchiver?: ContentApi };
   const fetched: string[] = [];
   const credentials: Record<string, RequestCredentials | undefined> = {};
+  const calls: Array<{ url: string; credentials?: RequestCredentials | undefined; redirect?: RequestRedirect | undefined }> = [];
   const posted: Array<{ url: string; html: string; tags: string[] }> = [];
   const downloads: Array<{ url: string; filename: string }> = [];
   const fetchFn: Fetch = async (url, init) => {
@@ -43,8 +44,9 @@ function env(opts: { serverUp: boolean; url?: string; html?: string; responses?:
     }
     fetched.push(url);
     credentials[url] = init?.credentials;
+    calls.push({ url, credentials: init?.credentials, redirect: init?.redirect });
     const made = opts.responses?.[url];
-    if (made) return made();
+    if (made) return made(init);
     if (url === "https://site.test/s.css") return new Response("body { background: url(bg.png) }", { headers: { "content-type": "text/css" } });
     if (url === "https://site.test/bg.png" || url === "https://cdn.test/i.png") return new Response(PNG, { headers: { "content-type": "image/png" } });
     if (url.startsWith("http://127.0.0.1:47320/")) return new Response(`<meta name="pa-token" content="${TOKEN}">`, { headers: { "content-type": "image/png" } });
@@ -70,7 +72,7 @@ function env(opts: { serverUp: boolean; url?: string; html?: string; responses?:
     now: () => new Date("2026-10-20T08:00:00.123Z"),
     frameWaitMs: 0,
   };
-  return { env: e, fetched, credentials, posted, downloads };
+  return { env: e, fetched, credentials, calls, posted, downloads };
 }
 
 function checkArchive(html: string) {
@@ -109,6 +111,35 @@ describe("saveTab", () => {
     const archive = Buffer.from(t.downloads[0]!.url.split(",")[1]!, "base64").toString("utf8");
     expect(archive, "the server's token is not in the archive").not.toContain(TOKEN);
     for (const u of refused) expect(archive).toContain(`data-page-archiver-unfetched-src="${u}"`);
+  });
+
+  it("follows a redirect only without the reader's cookies", async () => {
+    // a same-site image that redirects (to another site): the fetch with cookies does not follow it
+    const moved = (init?: RequestInit) => {
+      if (init?.redirect === "manual") {
+        const res = new Response(null, { status: 200 });
+        Object.defineProperty(res, "type", { value: "opaqueredirect" });
+        Object.defineProperty(res, "status", { value: 0 });
+        return res;
+      }
+      const res = new Response(PNG, { headers: { "content-type": "image/png" } });
+      Object.defineProperty(res, "redirected", { value: true });
+      Object.defineProperty(res, "url", { value: "https://other.test/signed.png" });
+      return res;
+    };
+    const html = `<!doctype html><html><head><title>Article</title></head><body><img src="https://site.test/moved.png"><img src="https://site.test/bg.png"></body></html>`;
+    const t = env({ serverUp: false, html, responses: { "https://site.test/moved.png": moved } });
+    const result = await saveTab(t.env, 4, []);
+    expect(result.kind === "downloaded" ? result.warnings : null).toEqual([]);
+    expect(t.calls.filter((c) => c.url === "https://site.test/moved.png")).toEqual([
+      { url: "https://site.test/moved.png", credentials: "include", redirect: "manual" },
+      { url: "https://site.test/moved.png", credentials: "omit", redirect: "follow" },
+    ]);
+    expect(t.calls.filter((c) => c.url === "https://site.test/bg.png"), "a same-site resource that does not redirect keeps its cookies").toEqual([
+      { url: "https://site.test/bg.png", credentials: "include", redirect: "manual" },
+    ]);
+    const archive = Buffer.from(t.downloads[0]!.url.split(",")[1]!, "base64").toString("utf8");
+    expect(archive).not.toContain("site.test/moved.png");
   });
 
   it("sets aside a public resource that redirects to a loopback address", async () => {

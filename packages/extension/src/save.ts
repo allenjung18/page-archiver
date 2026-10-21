@@ -35,11 +35,17 @@ export interface FetchFor {
  * A resource's bytes from the service worker, with the reader's cookies when it is on the page's
  * own site. A target `refusal` names (a private-network host not the page's own, the library
  * server), before the fetch or after a redirect, throws: the resolver sets it aside with a warning.
+ * A redirect is followed only without cookies (where it leads is not known until it is followed,
+ * and the cookies would go with every hop): a fetch with cookies does not follow one, and on a
+ * redirect the resource is fetched again without them.
  */
 export async function fetchResource(fetchFn: Fetch, url: string, page: FetchFor): Promise<{ status: number; mime: string; bytes: Uint8Array }> {
   const why = refusal(url, page.pageUrl, page.server);
   if (why) throw new Error(`refused: ${why}`);
-  const res = await fetchFn(url, { credentials: credentialsFor(url, page.pageUrl), cache: "force-cache", redirect: "follow", signal: AbortSignal.timeout(30_000) });
+  const init = { cache: "force-cache", signal: AbortSignal.timeout(30_000) } as const;
+  const credentials = credentialsFor(url, page.pageUrl);
+  let res = await fetchFn(url, { ...init, credentials, redirect: credentials === "include" ? "manual" : "follow" });
+  if (res.type === "opaqueredirect") res = await fetchFn(url, { ...init, credentials: "omit", redirect: "follow" });
   const after = res.redirected && res.url ? refusal(res.url, page.pageUrl, page.server) : null;
   if (after) {
     await res.body?.cancel().catch(() => undefined);

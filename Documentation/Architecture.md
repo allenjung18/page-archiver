@@ -259,7 +259,9 @@ served under `UI_CSP`. Archives are served by `archiveResponse` (`serve-archive.
 (`FRAME_ATTRIBUTE`) and snapshots each frame; `buildTree` (`tree.ts`) rebuilds the frame tree;
 `fetchResource` fetches each resource from the service worker (host permission for every site,
 so no CORS), with the reader's cookies only for the page's own site (`credentialsFor`,
-`hosts.ts`: the same registrable domain, from the public suffix list in `tldts`). A page could
+`hosts.ts`: the same registrable domain, from the public suffix list in `tldts`); a fetch with
+cookies does not follow a redirect (`redirect: "manual"`), and a resource that redirects is
+fetched again without them, since the cookies would go with every hop. A page could
 otherwise name a resource on the reader's machine or network and have it inlined: `refusal`
 refuses, before the fetch and again after a redirect, a loopback, private-network, link-local
 or unspecified address (`hostClass`: 127/8, `localhost`, ::1, 10/8, 172.16/12, 192.168/16,
