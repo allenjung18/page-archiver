@@ -152,7 +152,10 @@ committed list back (`git checkout test/smoke-urls.txt`) when you are done.
 
 ## Writing down what broke
 
-For each problem, one entry:
+For each problem, one entry, sent as an issue on the project's GitHub repository
+(<https://github.com/allenjung18/page-archiver/issues/new>), one issue per problem, with the
+entry as its body. Attach the archive only when the page is public: an archive of a signed-in
+page holds what that account saw.
 
 ```
 url:        the page
