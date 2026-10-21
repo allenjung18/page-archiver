@@ -740,3 +740,46 @@ describe("inlineDocument: a custom property's string that var() brings into an i
     expect(requested.sort()).toEqual(["http://site.test/n6.png", "http://site.test/n7.png"]);
   });
 });
+
+describe("inlineDocument: an image-set() string in an SVG mask, and a var() fallback in a style attribute", () => {
+  it("inlines a mask's image-set() image, in the attribute and in an animation that writes it, as a style attribute's is", async () => {
+    const { doc, out, warnings } = await run(
+      `<svg><rect id="h1" mask="image-set('/m.png' 1x)"/>` +
+        `<rect><set id="h23" attributeName="mask" to="image-set('/m.png' 1x)"/><animate id="v" attributeName="mask" values="image-set('/m.png' 1x);none"/></rect>` +
+        `<rect id="both" mask="url(http://cdn.test/fx/fx.svg#soft), image-set('/m.png' 1x)"/></svg>`,
+      { "http://site.test/m.png": PNG, "http://cdn.test/fx/fx.svg": { mime: SVG, body: FX } },
+    );
+    expect(warnings).toEqual([]);
+    expect(getAttr(byId(doc, "h1"), "mask")).toBe(`image-set(url("${PNG_URI}") 1x)`);
+    expect(getAttr(byId(doc, "h23"), "to")).toBe(`image-set(url("${PNG_URI}") 1x)`);
+    expect(getAttr(byId(doc, "v"), "values"), "a values list is split at every ;").toBe(`image-set(url("data:image/png,%89PNG%0D%0A%1A%0A") 1x);none`);
+    expect(getAttr(byId(doc, "both"), "mask")).toBe(`url(#${SPRITE_ID_PREFIX}0-soft), image-set(url("${PNG_URI}") 1x)`);
+    expect(out, "no address left that the archive would fetch").not.toMatch(/m\.png|cdn\.test/);
+    expect(out).not.toContain(UNFETCHED_ATTRIBUTE_PREFIX);
+  });
+
+  it("sets aside a mask image that cannot be had: the image fails as it did live, and the mask is not made none", async () => {
+    const { doc, requested } = await run(
+      `<svg><rect id="g" mask="image-set('/gone.png' 1x)"/><rect><set id="s" attributeName="mask" to="image-set('/gone.png' 1x)"/></rect>` +
+        `<rect id="f" fill="image-set('/paint.png' 1x)" filter="image-set('/paint.png' 1x)"/></svg>`,
+      {},
+    );
+    // a paint or a filter takes no image: Chromium fetches nothing for it, and neither does the capture
+    expect(getAttr(byId(doc, "f"), "fill")).toBe("image-set('/paint.png' 1x)");
+    expect(requested).toEqual(["http://site.test/gone.png", "http://site.test/gone.png"]);
+    expect(getAttr(byId(doc, "g"), "mask")).toBe(`image-set(url("data:,") 1x)`);
+    expect(getAttr(byId(doc, "g"), `${UNFETCHED_ATTRIBUTE_PREFIX}mask`)).toBe("http://site.test/gone.png");
+    expect(getAttr(byId(doc, "s"), "to")).toBe(`image-set(url("data:,") 1x)`);
+    expect(getAttr(byId(doc, "s"), `${UNFETCHED_ATTRIBUTE_PREFIX}to`)).toBe("http://site.test/gone.png");
+  });
+
+  it("inlines a style attribute's var() fallback string in an image-set() that the browser fetched, and keeps one it did not", async () => {
+    const doc = parseDocument(`<div id="s2" style="background-image:image-set(var(--nope,'/s2.png') 1x)"></div><div id="k" style="content:var(--x,'/s2.png');background:image-set(var(--n,'/k.png') 1x)"></div>`);
+    const { ctx, requested } = ctxFor({ "http://site.test/s2.png": PNG, "http://site.test/k.png": PNG });
+    ctx.fetched = (url) => url === "http://site.test/s2.png";
+    await inlineDocument(doc, ctx);
+    expect(getAttr(byId(doc, "s2"), "style")).toBe(`background-image:image-set(var(--nope,"${PNG_URI}") 1x)`);
+    expect(getAttr(byId(doc, "k"), "style")).toBe(`content:var(--x,'/s2.png');background:image-set(var(--n,'/k.png') 1x)`);
+    expect(requested).toEqual(["http://site.test/s2.png"]);
+  });
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Resource } from "../resources.ts";
-import { customPropertyStrings, hasCssRefs, inlineCss, inlineCustomPropertyStrings, inlineUrls, parseImport, resolveCssUrl, type CssContext } from "./css.ts";
+import { customPropertyStrings, hasCssRefs, inlineCss, inlineCustomPropertyStrings, inlineUrls, parseImport, resolveCssUrl, type CssContext, type StringScope } from "./css.ts";
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const PNG_URI = `data:image/png;base64,${PNG.toString("base64")}`;
@@ -433,11 +433,11 @@ describe("a custom property's string, which var() can bring into an image-set()"
   it("inlines one in a style attribute's declaration list, and in a sheet that does not parse", async () => {
     const { ctx } = site({ "http://s.test/a.png": PNG });
     ctx.fetched = FETCHED(["http://s.test/a.png"]);
-    expect(await inlineCustomPropertyStrings(`--u:'a.png';background-image:image-set(var(--u) 1x)`, "http://s.test/", ctx, true)).toBe(
+    expect(await inlineCustomPropertyStrings(`--u:'a.png';background-image:image-set(var(--u) 1x)`, "http://s.test/", ctx, "list")).toBe(
       `--u:"${PNG_URI}";background-image:image-set(var(--u) 1x)`,
     );
     // escapes in the name, a comment before the colon, the end of the text closing the string
-    expect(await inlineCustomPropertyStrings(String.raw`color:red; \2d-u /* c */ : "a.png`, "http://s.test/", ctx, true)).toBe(String.raw`color:red; \2d-u /* c */ : "${PNG_URI}"`);
+    expect(await inlineCustomPropertyStrings(String.raw`color:red; \2d-u /* c */ : "a.png`, "http://s.test/", ctx, "list")).toBe(String.raw`color:red; \2d-u /* c */ : "${PNG_URI}"`);
     const broken = await inlineCss(`.a{--v:"a.png";background:image-set(var(--v) 1x)}.b{color:red`, "http://s.test/", ctx);
     expect(broken).toBe(`.a{--v:"${PNG_URI}";background:image-set(var(--v) 1x)}.b{color:red`);
   });
@@ -454,7 +454,7 @@ describe("a custom property's string, which var() can bring into an image-set()"
     const { ctx, asked } = site({ "http://s.test/a.png": PNG });
     const css = `.n7{--v:"a.png";background-image:image-set(var(--v) 1x)}`;
     expect(await inlineCss(css, "http://s.test/", ctx)).toBe(css);
-    expect(await inlineCustomPropertyStrings(`--u:'a.png'`, "http://s.test/", ctx, true)).toBe(`--u:'a.png'`);
+    expect(await inlineCustomPropertyStrings(`--u:'a.png'`, "http://s.test/", ctx, "list")).toBe(`--u:'a.png'`);
     expect(asked).toEqual([]);
   });
 
@@ -464,7 +464,7 @@ describe("a custom property's string, which var() can bring into an image-set()"
     expect(await inlineCss(`.x{--v:"gone.png"}`, "http://s.test/", ctx)).toBe(`.x{--v:"data:" /* page-archiver unfetched: http://s.test/gone.png */}`);
     // a 404 live: the browser asked for it, and it is not a fetch that succeeded
     ctx.requested = FETCHED(["http://s.test/gone.png", "http://s.test/404.png"]);
-    expect(await inlineCustomPropertyStrings(`--u:'404.png';--k:'kept.png'`, "http://s.test/", ctx, true)).toBe(
+    expect(await inlineCustomPropertyStrings(`--u:'404.png';--k:'kept.png'`, "http://s.test/", ctx, "list")).toBe(
       `--u:"data:" /* page-archiver unfetched: http://s.test/404.png */;--k:'kept.png'`,
     );
   });
@@ -474,16 +474,16 @@ describe("a custom property's string, which var() can bring into an image-set()"
     ctx.fetched = FETCHED(["http://s.test/", "http://s.test/app.css"]);
     const css = `:root{--sep:"/";--dot:".";--sheet:"app.css"}.crumb::after{content:var(--sep)}`;
     expect(await inlineCss(css, "http://s.test/", ctx)).toBe(css);
-    expect(await inlineCustomPropertyStrings(`--bs-breadcrumb-divider:'/'`, "http://s.test/", ctx, true)).toBe(`--bs-breadcrumb-divider:'/'`);
+    expect(await inlineCustomPropertyStrings(`--bs-breadcrumb-divider:'/'`, "http://s.test/", ctx, "list")).toBe(`--bs-breadcrumb-divider:'/'`);
   });
 
   it("reads only custom properties' values, and not a string a url() or an image-set() in one holds", () => {
-    const at = (text: string, list: boolean) => customPropertyStrings(text, list).map((r) => r.raw);
-    expect(at(`content:"a";--x:"b" 'c';font-family:"d";--y:{ "e"; "f" };--z:"g"`, true)).toEqual(["b", "c", "e", "f", "g"]);
-    expect(at(`.a{content:"a"}.b{--x:"b"}@media print{.c{--y:"c";background:"d"}}`, true)).toEqual(["b", "c"]);
-    expect(at(`url("a.png") image-set("b.png" 1x) "c" fn("d") /* "e" */`, false)).toEqual(["c", "d"]);
+    const at = (text: string, scope: StringScope) => customPropertyStrings(text, scope).map((r) => r.raw);
+    expect(at(`content:"a";--x:"b" 'c';font-family:"d";--y:{ "e"; "f" };--z:"g"`, "list")).toEqual(["b", "c", "e", "f", "g"]);
+    expect(at(`.a{content:"a"}.b{--x:"b"}@media print{.c{--y:"c";background:"d"}}`, "list")).toEqual(["b", "c"]);
+    expect(at(`url("a.png") image-set("b.png" 1x) "c" fn("d") /* "e" */`, "value")).toEqual(["c", "d"]);
     // a string a newline ends is a bad string, which fetches nothing
-    expect(at(`--x:"a\n;--y:"b"`, true)).toEqual(["b"]);
+    expect(at(`--x:"a\n;--y:"b"`, "list")).toEqual(["b"]);
   });
 
   it("inlines an @property's initial-value, which var() falls back to", async () => {
@@ -492,5 +492,111 @@ describe("a custom property's string, which var() can bring into an image-set()"
     expect(await inlineCss(`@property --v{syntax:"*";inherits:false;initial-value:"a.png"}`, "http://s.test/", ctx)).toBe(
       `@property --v{syntax:"*";inherits:false;initial-value:"${PNG_URI}"}`,
     );
+  });
+});
+
+describe("a string a substitution function in an image-set() can make one of its images", () => {
+  // Chromium fetches `image-set(var(--nope, "a.png") 1x)` (var()'s fallback), an if() branch, a custom
+  // function's argument or its result: none is an image as written, only once the value is computed
+  const FETCHED = (urls: string[]) => (url: string) => urls.includes(url);
+
+  it("inlines one in a var() fallback (nested too), an if() branch and a custom function's argument the browser fetched", async () => {
+    const { ctx, asked } = site({ "http://s.test/a.png": PNG, "http://s.test/b.png": PNG, "http://s.test/c.png": PNG, "http://s.test/d.png": PNG });
+    ctx.fetched = FETCHED(["http://s.test/a.png", "http://s.test/b.png", "http://s.test/c.png", "http://s.test/d.png"]);
+    const css =
+      `.s1{background-image:image-set(var(--nope, "a.png") 1x)}` +
+      `.s15{background-image:image-set(var(--n4, var(--n5, 'b.png')) 1x)}` +
+      `.s4{background-image:image-set(if(media(min-width:1px): "c.png"; else: "later.png") 1x)}` +
+      `.s7{background-image:-webkit-image-set(--pass("d.png") 1x)}`;
+    expect(await inlineCss(css, "http://s.test/", ctx)).toBe(
+      `.s1{background-image:image-set(var(--nope, "${PNG_URI}") 1x)}` +
+        `.s15{background-image:image-set(var(--n4, var(--n5, "${PNG_URI}")) 1x)}` +
+        `.s4{background-image:image-set(if(media(min-width:1px): "${PNG_URI}"; else: "later.png") 1x)}` +
+        `.s7{background-image:-webkit-image-set(--pass("${PNG_URI}") 1x)}`,
+    );
+    expect(asked.sort(), "the branch the browser never took is not fetched").toEqual(["http://s.test/a.png", "http://s.test/b.png", "http://s.test/c.png", "http://s.test/d.png"]);
+  });
+
+  it("inlines one in a style attribute, in a sheet that does not parse, and behind an escaped name", async () => {
+    const { ctx } = site({ "http://s.test/a.png": PNG });
+    ctx.fetched = FETCHED(["http://s.test/a.png"]);
+    expect(await inlineCustomPropertyStrings(`width:2px;background-image:image-set(var(--nope,'a.png') 1x)`, "http://s.test/", ctx, "list")).toBe(
+      `width:2px;background-image:image-set(var(--nope,"${PNG_URI}") 1x)`,
+    );
+    expect(await inlineCss(String.raw`.a{background:image-s\65t(v\61r(--n, "a.png") 1x)}`, "http://s.test/", ctx)).toBe(String.raw`.a{background:image-s\65t(v\61r(--n, "${PNG_URI}") 1x)}`);
+    expect(await inlineCss(`.a{background:image-set(var(--n, "a.png") 1x)}.b{color:rgb(1,2,3`, "http://s.test/", ctx)).toBe(
+      `.a{background:image-set(var(--n, "${PNG_URI}") 1x)}.b{color:rgb(1,2,3`,
+    );
+  });
+
+  it("keeps a string no substitution can make an image: a style() condition's, a type()'s, one outside an image-set()", async () => {
+    const { ctx, asked } = site({ "http://s.test/a.png": PNG });
+    ctx.fetched = FETCHED(["http://s.test/a.png"]);
+    const css =
+      `.x{background:image-set(if(style(--k:"a.png"): url(b.png); else: none) 1x, "c.png" type("a.png"))}` +
+      `.y::after{content:var(--label, "a.png");font-family:var(--face, "a.png")}`;
+    expect(await inlineCss(css, "http://s.test/", ctx)).toBe(css.replace(`"c.png"`, `url("data:,") /* page-archiver unfetched: http://s.test/c.png */`).replace("url(b.png)", `url("data:,") /* page-archiver unfetched: http://s.test/b.png */`));
+    expect(asked.sort()).toEqual(["http://s.test/b.png", "http://s.test/c.png"]);
+  });
+
+  it("sets aside one the browser asked for whose bytes cannot be had", async () => {
+    const { ctx } = site({});
+    ctx.fetched = FETCHED([]);
+    ctx.requested = FETCHED(["http://s.test/404.png"]);
+    expect(await inlineCss(`.a{background:image-set(var(--n, "404.png") 1x)}`, "http://s.test/", ctx)).toBe(
+      `.a{background:image-set(var(--n, "data:" /* page-archiver unfetched: http://s.test/404.png */) 1x)}`,
+    );
+  });
+
+  it("inlines an @function's result and the default in its prelude, which a call in an image-set() brings in", async () => {
+    const { ctx } = site({ "http://s.test/a.png": PNG, "http://s.test/b.png": PNG, "http://s.test/c.png": PNG });
+    ctx.fetched = FETCHED(["http://s.test/a.png", "http://s.test/b.png", "http://s.test/c.png"]);
+    expect(await inlineCss(`@function --img(--d: "b.png"){result:"a.png";@media (width>1px){result:"c.png"}}.s6{background:image-set(--img() 1x)}`, "http://s.test/", ctx)).toBe(
+      `@function --img(--d: "${PNG_URI}"){result:"${PNG_URI}";@media (width>1px){result:"${PNG_URI}"}}.s6{background:image-set(--img() 1x)}`,
+    );
+    // a sheet that does not parse: the blocks are found by their at-rule's name
+    expect(await inlineCss(String.raw`@f\75nction --img(--d: 'b.png'){result:"a.png"}.r{result:"a.png"}.b{color:rgb(1`, "http://s.test/", ctx)).toBe(
+      String.raw`@f\75nction --img(--d: "${PNG_URI}"){result:"${PNG_URI}"}.r{result:"a.png"}.b{color:rgb(1`,
+    );
+  });
+
+  it("inlines an @property's initial-value whose at-rule or descriptor name is escaped, or whose sheet does not parse", async () => {
+    const { ctx } = site({ "http://s.test/a.png": PNG });
+    ctx.fetched = FETCHED(["http://s.test/a.png"]);
+    for (const css of [
+      String.raw`@p\72operty --px{syntax:"*";inherits:false;initial-value:"a.png"}`, // postcss names it "p"
+      String.raw`@property --pw{syntax:"*";inherits:false;initial-v\61lue:"a.png"}`,
+      String.raw`@\70roperty --pv{syntax:"*";inherits:false;initial-value:"a.png"}`, // postcss cannot parse it
+      `@property --py{syntax:"*";inherits:false;initial-value:"a.png"}.z{background:url(a.png`, // nor this
+    ]) {
+      const out = await inlineCss(css, "http://s.test/", ctx);
+      expect(out, css).toContain(`:"${PNG_URI}"}`);
+      expect(out, `${css}: the syntax descriptor is not a URL`).toContain(`syntax:"*"`);
+    }
+    // an initial-value outside an @property is no such thing
+    const css = `@media print{.a{initial-value:"a.png"}}.b{color:rgb(1`;
+    expect(await inlineCss(css, "http://s.test/", ctx)).toBe(css);
+  });
+
+  it("reads only the strings a substitution can bring in", () => {
+    const at = (text: string, scope: StringScope) => customPropertyStrings(text, scope).map((r) => r.raw);
+    expect(at(`image-set("a" 1x, var(--x, "b") 2x, if(style(--k:"c"): "d"), type("e"), --f("g"), x("h"), image-set(var(--y,"i") 1x))`, "decl")).toEqual(["b", "d", "g", "i"]);
+    expect(at(`content:"a";var(--x,"b")`, "decl"), "outside an image-set() a var() fallback is text").toEqual([]);
+    expect(at(`@property --p{syntax:"a";initial-value:"b"}@function --f(--d:"c"){result:"d"}.r{result:"e";initial-value:"f"}@import "g";--x:"h"`, "list")).toEqual(["b", "c", "d", "h"]);
+  });
+});
+
+describe("a custom function's string argument, which its result can bring into an image-set()", () => {
+  it("inlines one the browser fetched in a sheet, a style attribute and a sheet that does not parse, and keeps a var() fallback outside any call", async () => {
+    const { ctx } = site({ "http://s.test/a.png": PNG });
+    ctx.fetched = (url) => url === "http://s.test/a.png";
+    const fn = `@function --wrap(--x){result:image-set(var(--x) 1x)}`;
+    expect(await inlineCss(`${fn}.a{background-image:--wrap("a.png")}.b{background:--wrap(var(--n, 'a.png'))}`, "http://s.test/", ctx)).toBe(
+      `${fn}.a{background-image:--wrap("${PNG_URI}")}.b{background:--wrap(var(--n, "${PNG_URI}"))}`,
+    );
+    expect(await inlineCustomPropertyStrings(`background-image:--wrap('a.png');content:var(--x,'a.png')`, "http://s.test/", ctx, "list")).toBe(
+      `background-image:--wrap("${PNG_URI}");content:var(--x,'a.png')`,
+    );
+    expect(await inlineCss(`.a{background:--wrap(x("a.png"), "a.png")}.b{color:rgb(1`, "http://s.test/", ctx)).toBe(`.a{background:--wrap(x("a.png"), "${PNG_URI}")}.b{color:rgb(1`);
   });
 });

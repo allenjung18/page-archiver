@@ -28,7 +28,7 @@ import {
   type ParentNode,
 } from "../dom.ts";
 import { sanitizeDocument } from "../sanitize.ts";
-import { dataCssText, decodeCss, hasCssRefs, inlineCss, inlineCustomPropertyStrings, inlineUrls, resolveCssUrl, sheetLabel, UNFETCHED_URL, urlTokens, type CssContext } from "./css.ts";
+import { dataCssText, decodeCss, hasCssRefs, imageSetStrings, inlineCss, inlineCustomPropertyStrings, inlineUrls, resolveCssUrl, sheetLabel, UNFETCHED_URL, urlTokens, type CssContext } from "./css.ts";
 import { effectiveMime, normalizeMime, toDataUri, toListDataUri } from "./datauri.ts";
 
 export interface HtmlContext extends CssContext {
@@ -492,32 +492,48 @@ async function inlineSvgRef(el: Element, name: string, value: string, ctx: HtmlC
   setAttr(el, name, out);
 }
 
-/** inlineSvgRef's work on one value: what it becomes, and the URLs set aside from it. */
-async function svgRefValue(el: Element, name: string, value: string, ctx: HtmlContext, state: SpriteState): Promise<{ out: string; aside: string[] }> {
-  const aside: string[] = [];
-  const refs = urlTokens(value);
+/**
+ * inlineSvgRef's work on one value: what it becomes, and the URLs set aside from it. A string in
+ * a mask's image-set() names an image, not an element (`mask="image-set('m.png' 1x)"` is a mask image):
+ * it is inlined with `dataUri`, as a style attribute's is, or, when it cannot be had, becomes
+ * UNFETCHED_URL, which fails as the fetch did.
+ */
+async function svgRefValue(
+  el: Element,
+  name: string,
+  value: string,
+  ctx: HtmlContext,
+  state: SpriteState,
+  dataUri: (bytes: Uint8Array, mime: string) => string = toDataUri,
+): Promise<{ out: string; aside: string[] }> {
+  // of these attributes only a mask takes an image: Chromium fetches no image-set() in a filter, a paint...
+  const images = name === "mask" ? imageSetStrings(value) : [];
+  const refs = [...urlTokens(value).map((r) => ({ ...r, image: false })), ...images.map((r) => ({ ...r, image: true }))].sort((a, b) => a.index - b.index);
   const replacements = await Promise.all(
-    refs.map(async (r): Promise<string | null> => {
+    refs.map(async (r): Promise<{ text: string; aside?: string; failed?: boolean }> => {
       const written = value.slice(r.index, r.index + r.length);
       const url = resolveCssUrl(r.raw, ctx.baseUrl);
-      if (!url) return written; // an in-page #id, a data: URL
+      if (!url) return { text: written }; // an in-page #id, a data: URL
+      if (r.image) {
+        const res = await ctx.get(url);
+        return res ? { text: `url("${dataUri(res.bytes, res.mime)}")` } : { text: UNFETCHED_URL, aside: url }; // the resolver has warned
+      }
       const copy = await spriteCopy(url, el, ctx, state, true);
-      if ("id" in copy) return localRef(copy.id);
+      if ("id" in copy) return { text: localRef(copy.id) };
       if (copy.why) ctx.warn(`${name} ${url}: ${copy.why}; set aside`);
-      aside.push(url);
-      return null;
+      return { text: "", aside: url, failed: true };
     }),
   );
   let out = "";
   let last = 0;
   refs.forEach((r, i) => {
-    out += value.slice(last, r.index) + (replacements[i] ?? "");
+    out += value.slice(last, r.index) + replacements[i]!.text;
     last = r.index + r.length;
   });
   out += value.slice(last);
   // a failed reference: a paint falls back to its colour, and a filter, mask, clip path or marker is none
-  if (aside.length) out = (name === "fill" || name === "stroke") && out.trim() ? out.trim() : "none";
-  return { out, aside };
+  if (replacements.some((r) => r.failed)) out = (name === "fill" || name === "stroke") && out.trim() ? out.trim() : "none";
+  return { out, aside: replacements.flatMap((r) => (r.aside ? [r.aside] : [])) };
 }
 
 /** SVG presentation attributes whose url() names an image, not an element: `cursor="url(cur.png) 4 4, auto"`. */
@@ -600,7 +616,7 @@ async function animatedValue(
   const dataUri = list ? toListDataUri : toDataUri;
   if (attr.kind === "ref") {
     if (!hasCssRefs(item)) return item;
-    const r = await svgRefValue(el, attr.name, item, ctx, state);
+    const r = await svgRefValue(el, attr.name, item, ctx, state, dataUri);
     aside.push(...r.aside);
     return r.out;
   }
@@ -691,7 +707,7 @@ async function inlineElements(elements: readonly Element[], ctx: HtmlContext, sp
       // a custom property's string reaches an image-set() through var(): inlined when the page fetched it
       const v = hasCssRefs(style) ? inlineUrls(style, ctx.baseUrl, ctx) : Promise.resolve(style);
       jobs.push(
-        v.then((u) => inlineCustomPropertyStrings(u, ctx.baseUrl, ctx, true)).then((u) => {
+        v.then((u) => inlineCustomPropertyStrings(u, ctx.baseUrl, ctx, "list")).then((u) => {
           if (u !== style) setAttr(el, "style", u);
         }),
       );

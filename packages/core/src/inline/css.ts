@@ -322,7 +322,7 @@ export function urlTokens(text: string): CssRef[] {
 export function hasCssRefs(text: string): boolean {
   if (/url\(|image-set\(/i.test(text)) return true;
   // a name written with escapes ("\75rl(", "image-s\65t(") is read as Chromium reads it
-  return text.includes("\\") && (urlTokens(text).length > 0 || imageSetStrings(text).length > 0);
+  return text.includes("\\") && (urlTokens(text).length > 0 || imageSetStrings(text).length > 0 || customPropertyStrings(text, "decl").length > 0);
 }
 
 /** True when a function name (decoded, lower-cased) is an image-set(). */
@@ -396,12 +396,28 @@ function commentEnd(text: string, i: number): number {
   return end < 0 ? text.length : end + 2;
 }
 
+/** The functions whose value is one put in their place when the value is computed, which may be a string. */
+const SUBSTITUTION_FUNCTIONS = new Set(["var", "env", "attr", "if", "inherit"]);
+
+/**
+ * True when a function (its name decoded, lower-cased) is one whose argument a string may stand
+ * for in its place: var(), env(), attr() and inherit() (a fallback), an if() (a branch), or a
+ * custom function, `--name()` (an argument, which its result can be).
+ */
+function isSubstitution(name: string): boolean {
+  return name.startsWith("--") || SUBSTITUTION_FUNCTIONS.has(name);
+}
+
 /**
  * Reads the arguments of an image-set() from just after its "(", adding to `found` each option's
- * image written as a string ("a.png" 1x) rather than a url(). Returns where the function ends.
+ * image written as a string ("a.png" 1x) rather than a url(), and to `substituted` each string
+ * written directly inside a substitution function there (`image-set(var(--x, "a.png") 1x)`, an
+ * if() branch, a custom function's argument): one that may become an option's image when the
+ * value is computed, or may not. A nested image-set()'s images are `found`. Returns where the
+ * function ends.
  */
-function scanImageSet(text: string, from: number, found: CssRef[]): number {
-  let depth = 0;
+function scanImageSet(text: string, from: number, found: CssRef[], substituted: CssRef[] = []): number {
+  const open: boolean[] = []; // for each bracket open in the arguments: is it a substitution function's
   let atOption = true;
   let i = from;
   while (i < text.length) {
@@ -413,20 +429,30 @@ function scanImageSet(text: string, from: number, found: CssRef[]): number {
     } else if (c === '"' || c === "'") {
       const s = stringAt(text, i);
       // only the image of an option: a string in type() or another function is not a URL; a bad string fetches nothing
-      if (depth === 0 && atOption && !s.bad) found.push({ index: i, length: s.end - i, raw: s.raw });
+      if (!s.bad) {
+        const ref = { index: i, length: s.end - i, raw: s.raw };
+        if (!open.length && atOption) found.push(ref);
+        else if (open.at(-1)) substituted.push(ref);
+      }
       atOption = false;
       i = s.end;
     } else if (isNameChar(c)) {
       // a name, a url() read whole (a bad one's remnants too: a quote in them is not a string), or a function's name
       atOption = false;
-      i = afterName(text, i);
+      const fn = functionAt(text, i);
+      if (fn && isImageSet(fn.name)) {
+        i = scanImageSet(text, fn.open + 1, found, substituted);
+      } else if (fn && fn.name !== "url") {
+        open.push(isSubstitution(fn.name));
+        i = fn.open + 1;
+      } else i = afterName(text, i, fn);
     } else {
       atOption = false;
-      if (c === "(") depth++;
+      if (c === "(") open.push(false);
       else if (c === ")") {
-        if (depth === 0) return i + 1;
-        depth--;
-      } else if (c === "," && depth === 0) atOption = true;
+        if (!open.length) return i + 1;
+        open.pop();
+      } else if (c === "," && !open.length) atOption = true;
       i++;
     }
   }
@@ -499,17 +525,51 @@ export function isCustomProperty(prop: string): boolean {
 }
 
 /**
- * The strings in a custom property's value (`list` false: text is that value), or in the value of
- * every custom property of a declaration list, a style attribute or a sheet postcss could not
- * parse (`list` true). var() can bring such a string into an image-set(), which fetches it as it
- * does a url(). Not a string in a url() or in an image-set() written in the value: inlineUrls has
- * those. Comments, strings and a bad url's remnants are read past as the tokenizer reads them.
+ * What text customPropertyStrings reads: one custom property's value (or an @property's
+ * initial-value, an @function's result or its prelude); a declaration list, a style attribute or a
+ * sheet postcss could not parse; or the value of a declaration that is not a custom property.
  */
-export function customPropertyStrings(text: string, list: boolean): CssRef[] {
+export type StringScope = "value" | "list" | "decl";
+
+/**
+ * True when a declaration named `name` (decoded) inside the at-rule blocks `blocks` (their names,
+ * decoded and lower-cased, outermost first; "" for a style rule) holds a value var() or a custom
+ * function can bring into an image-set(): a custom property, an @property's initial-value, or an
+ * @function's result.
+ */
+function holdsSubstitutedValue(name: string, blocks: readonly string[]): boolean {
+  if (name.startsWith("--")) return true;
+  const prop = name.toLowerCase();
+  return (prop === "initial-value" && blocks.at(-1) === "property") || (prop === "result" && blocks.includes("function"));
+}
+
+/**
+ * The strings in text that may reach an image-set() when the value is computed, and are not
+ * written as one of its images (inlineUrls has those, and the strings in url()s):
+ * - every string of a custom property's value (`value`): var() can bring it into an image-set(),
+ *   which fetches it as it does a url(). So can an @property's initial-value (var()'s fallback when
+ *   the property is not set) and an @function's result or the defaults in its prelude.
+ * - in a declaration list or a sheet (`list`), every string of such a value (each @property and
+ *   @function block is found by its at-rule's name, escapes decoded: `@p\72operty`), and
+ * - anywhere (`decl` reads only these), each string written directly inside a substitution
+ *   function in an image-set(): `image-set(var(--x, "a.png") 1x)`, an if() branch, a custom
+ *   function's argument (scanImageSet's `substituted`); and one written directly inside a custom
+ *   function's call (or a substitution function in it) anywhere: `--wrap("a.png")`, whose result
+ *   may put it in an image-set().
+ * Comments, strings and a bad url's remnants are read past as the tokenizer reads them.
+ */
+export function customPropertyStrings(text: string, scope: StringScope): CssRef[] {
   const found: CssRef[] = [];
-  let inValue = !list; // reading a custom property's value
+  const list = scope === "list";
+  let inValue = scope === "value"; // reading a custom property's value
   let atStart = true; // where a declaration may start (after "{", ";", "}" or at the start)
   let depth = 0; // brackets open in the value
+  const blocks: string[] = []; // list: the at-rule name of each block open, "" for a style rule
+  let prelude: string | null = null; // list: the at-rule whose prelude is being read
+  const calls: string[] = []; // outside a custom value: the function each bracket open opens ("" for a bare one)
+  // a string directly in a substitution function within a custom function's call: `--wrap("a.png")`,
+  // whose result may be `image-set(var(--x) 1x)`, or `--wrap(var(--n, "a.png"))`
+  const inCall = () => !!calls.length && isSubstitution(calls.at(-1)!) && calls.some((n) => n.startsWith("--"));
   let i = 0;
   while (i < text.length) {
     const c = text[i]!;
@@ -519,15 +579,22 @@ export function customPropertyStrings(text: string, list: boolean): CssRef[] {
       i++;
     } else if (c === '"' || c === "'") {
       const s = stringAt(text, i);
-      if (inValue && !s.bad) found.push({ index: i, length: s.end - i, raw: s.raw });
+      // a default in an @function's prelude, `@function --f(--x: "a.png")`, is its result's when no argument is given
+      if ((inValue || prelude === "function" || inCall()) && !s.bad) found.push({ index: i, length: s.end - i, raw: s.raw });
       atStart = false;
       i = s.end;
+    } else if (list && !inValue && c === "@") {
+      // an at-rule's name, read as Chromium reads it: `@\70roperty` is an @property
+      const id = identAt(text, i + 1);
+      prelude = id.name.toLowerCase();
+      atStart = false;
+      i = Math.max(id.end, i + 1);
     } else if (isNameChar(c)) {
       const fn = functionAt(text, i);
       if (list && !inValue && atStart && !fn) {
         const id = identAt(text, i);
         const colon = skipSpaceAndComments(text, id.end);
-        if (id.name.startsWith("--") && text[colon] === ":") {
+        if (text[colon] === ":" && holdsSubstitutedValue(id.name, blocks)) {
           inValue = true;
           depth = 0;
           atStart = false;
@@ -536,12 +603,28 @@ export function customPropertyStrings(text: string, list: boolean): CssRef[] {
         }
       }
       atStart = false;
-      i = fn && isImageSet(fn.name) ? scanImageSet(text, fn.open + 1, []) : afterName(text, i, fn);
+      if (fn && isImageSet(fn.name)) i = scanImageSet(text, fn.open + 1, [], found);
+      else if (!inValue && fn && fn.name !== "url") {
+        calls.push(fn.name);
+        i = fn.open + 1;
+      } else i = afterName(text, i, fn);
     } else {
-      if (inValue) {
-        if (c === "(" || c === "[" || c === "{") depth++;
-        else if ((c === ")" || c === "]" || c === "}") && depth > 0) depth--;
-        else if (list && depth === 0 && (c === ";" || c === "}")) inValue = false;
+      if (!inValue) {
+        if (c === "(") calls.push("");
+        else if (c === ")") calls.pop();
+        else if (c === ";" || c === "{" || c === "}") calls.length = 0;
+      }
+      if (inValue && (c === "(" || c === "[" || c === "{")) depth++;
+      else if (inValue && (c === ")" || c === "]" || c === "}") && depth > 0) depth--;
+      else if (list) {
+        if (inValue && depth === 0 && (c === ";" || c === "}")) inValue = false;
+        if (!inValue && c === "{") {
+          blocks.push(prelude ?? "");
+          prelude = null;
+        } else if (!inValue && c === "}") {
+          blocks.pop();
+          prelude = null;
+        } else if (!inValue && c === ";") prelude = null;
       }
       atStart = list && !inValue && (c === ";" || c === "{" || c === "}");
       i++;
@@ -551,19 +634,21 @@ export function customPropertyStrings(text: string, list: boolean): CssRef[] {
 }
 
 /**
- * Replaces each string of a custom property in text (customPropertyStrings) that names an image the
- * browser fetched while the page loaded (ctx.fetched) with a data: URI string of it; one the browser
- * asked for (ctx.requested) whose bytes cannot be had (an HTTP error, a cap) is set aside, as
- * "data:" and a comment with its URL. Any other string is kept as written, a resource that is not
- * an image too ("/" names the page itself): a custom property holds font names and `content` text
- * as often as images, and only the browser's fetch and the image's type tell them apart. With no
+ * Replaces each string in text that may reach an image-set() (customPropertyStrings: a custom
+ * property's, an @property initial-value's, one in a var() fallback or an if() branch there...)
+ * that names an image the browser fetched while the page loaded (ctx.fetched) with a data: URI
+ * string of it; one the browser asked for (ctx.requested) whose bytes cannot be had (an HTTP
+ * error, a cap) is set aside, as "data:" and a comment with its URL. Any other string is kept as
+ * written, a resource that is not an image too ("/" names the page itself): a custom property
+ * holds font names and `content` text as often as images, a var() fallback or an if() branch may
+ * never be the value, and only the browser's fetch and the image's type tell them apart. With no
  * ctx.fetched (a caller that did not record the page's loads), every string is kept as written.
  */
-export async function inlineCustomPropertyStrings(text: string, base: string, ctx: CssContext, list: boolean): Promise<string> {
+export async function inlineCustomPropertyStrings(text: string, base: string, ctx: CssContext, scope: StringScope): Promise<string> {
   const fetched = ctx.fetched;
   if (!fetched || !/["']/.test(text)) return text;
   const requested = ctx.requested ?? fetched;
-  const refs = customPropertyStrings(text, list);
+  const refs = customPropertyStrings(text, scope);
   if (!refs.length) return text;
   const replacements = await Promise.all(
     refs.map(async (r) => {
@@ -697,11 +782,24 @@ function setImportsAside(css: string, sheetUrl: string): string {
   return out + css.slice(last);
 }
 
-/** True when a declaration's value is one var() can bring into an image-set(): a custom property's, or an @property's initial-value. */
+/**
+ * An at-rule's name as Chromium reads it, its escapes decoded and lower-cased. postcss ends the
+ * name at a backslash: `@p\72operty --x` is an at-rule "p" with params `\72operty --x`.
+ */
+function atRuleName(at: AtRule): string {
+  const raw = at.raws.afterName === "" && at.params.startsWith("\\") ? at.name + at.params : at.name;
+  return identAt(raw, 0).name.toLowerCase();
+}
+
+/**
+ * True when a declaration's value is one var() or a custom function can bring into an
+ * image-set(): a custom property's, an @property's initial-value, or an @function's result. Names
+ * are read with their escapes decoded (`initial-v\61lue`, `@p\72operty`), as Chromium reads them.
+ */
 function holdsCustomValue(decl: Declaration): boolean {
-  if (isCustomProperty(decl.prop)) return true;
-  const parent = decl.parent;
-  return decl.prop.toLowerCase() === "initial-value" && parent?.type === "atrule" && (parent as AtRule).name.toLowerCase() === "property";
+  const blocks: string[] = [];
+  for (let p = decl.parent; p && p.type !== "root"; p = p.parent) blocks.unshift(p.type === "atrule" ? atRuleName(p as AtRule) : "");
+  return holdsSubstitutedValue(identAt(decl.prop, 0).name, blocks);
 }
 
 /**
@@ -717,7 +815,7 @@ export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, 
   } catch (err) {
     ctx.warn(`${label}: CSS did not parse (${(err as Error).message.split("\n")[0]}); url()s inlined, @import set aside`);
     const urls = await inlineUrls(setImportsAside(css, sheetUrl), sheetUrl, ctx);
-    return inlineCustomPropertyStrings(urls, sheetUrl, ctx, true);
+    return inlineCustomPropertyStrings(urls, sheetUrl, ctx, "list");
   }
 
   const imports: AtRule[] = [];
@@ -794,11 +892,23 @@ export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, 
   const decls: Promise<void>[] = [];
   root.walkDecls((decl) => {
     const custom = holdsCustomValue(decl);
-    if (hasCssRefs(decl.value) || custom) {
+    // a custom function's call may bring a string into an image-set() its result holds
+    if (hasCssRefs(decl.value) || custom || (/["']/.test(decl.value) && /--|\\/.test(decl.value))) {
       decls.push(
         (async () => {
           const v = hasCssRefs(decl.value) ? await inlineUrls(decl.value, sheetUrl, ctx) : decl.value;
-          decl.value = custom ? await inlineCustomPropertyStrings(v, sheetUrl, ctx, false) : v;
+          // any other declaration: a string in a var() fallback, an if() branch... of an image-set()
+          decl.value = await inlineCustomPropertyStrings(v, sheetUrl, ctx, custom ? "value" : "decl");
+        })(),
+      );
+    }
+  });
+  // a default in an @function's prelude is its result when the call gives no argument
+  root.walkAtRules((at) => {
+    if (/["']/.test(at.params) && atRuleName(at) === "function") {
+      decls.push(
+        (async () => {
+          at.params = await inlineCustomPropertyStrings(at.params, sheetUrl, ctx, "value");
         })(),
       );
     }

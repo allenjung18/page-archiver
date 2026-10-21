@@ -260,6 +260,22 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html).toMatch(/--later: "http:\/\/127\.0\.0\.1:\d+\/img\/lazy-6\.png\?vi-hover"/);
     },
   },
+  "substitution-image-set": {
+    // postcss cannot parse two of the <style>s: their url()s and strings are still read
+    warnings: [/^http:\/\/127\.0\.0\.1:\d+\/substitution-image-set\.html: CSS did not parse \(<css input>:\d+:\d+: At-rule without name\); url\(\)s inlined, @import set aside$/, /^http:\/\/127\.0\.0\.1:\d+\/substitution-image-set\.html: CSS did not parse \(<css input>:\d+:\d+: Unclosed bracket\); url\(\)s inlined, @import set aside$/],
+    withoutCsp: true,
+    check(html) {
+      // each string a substitution brings into an image-set() the page loaded is inlined as a data:
+      // URI: a var() fallback (in a <style> and a style attribute, nested too), an if() branch, an
+      // @function's result and argument (in an image-set() and in a call whose result holds one), an @property's initial-value behind an escaped name or in a
+      // sheet postcss cannot parse, and an SVG mask's image-set() image (an attribute and a <set>)
+      const shapes = ["s1", "s2", "s15", "s4", "s6", "s7", "s7b", "s11", "s12", "s13", "s14", "h1", "h23"];
+      for (const tag of shapes) expect(html, tag).not.toMatch(new RegExp(`ss-${tag}(?!-)`));
+      expect(count(html, /(?:&quot;|"|')data:image\/png;base64,/g)).toBe(13);
+      // the if() branch the page never took is kept as written
+      expect(html).toMatch(/else: "http:\/\/127\.0\.0\.1:\d+\/img\/lazy-4\.png\?ss-s4-else"/);
+    },
+  },
   "external-refs": {
     // the PDF is declared as one, so it is set aside without being fetched; the sprite that is
     // not there answers HTTP 404

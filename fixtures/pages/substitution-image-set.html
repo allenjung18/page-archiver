@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A string a substitution brings into an image-set()</title>
+<!-- A string in an image-set() is fetched once the value is computed, so one written inside a
+     substitution function there is fetched too: a var() fallback (nested too), an if() branch, an
+     @function's result or a custom function's argument, in an image-set()
+     or in a call whose result puts it in one. So is an @property's initial-value that
+     var() falls back to, when its at-rule or descriptor name is written with escapes, or its sheet
+     is one postcss cannot parse. And an SVG mask presentation attribute (or a <set> that writes
+     one) takes an image-set() image, as a style attribute does. Each box below is drawn by one.
+     Opened from disk with no CSP, the archive must make no request. The if() branch the page
+     never took is kept as written. -->
+<style>
+  .grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+  .box { width: 160px; height: 64px; background-color: #d8e0c8; background-repeat: no-repeat; background-size: 160px 64px; }
+  .s1 { background-image: image-set(var(--nope, "{{ASSETS}}/img/lazy-1.png?ss-s1") 1x); }
+  .s15 { background-image: image-set(var(--n4, var(--n5, "{{ASSETS}}/img/lazy-3.png?ss-s15")) 1x); }
+  .s4 { background-image: image-set(if(media(min-width: 1px): "{{ASSETS}}/img/lazy-4.png?ss-s4"; else: "{{ASSETS}}/img/lazy-4.png?ss-s4-else") 1x); }
+  @function --img() { result: "{{ASSETS}}/img/lazy-5.png?ss-s6"; }
+  .s6 { background-image: image-set(--img() 1x); }
+  @function --pass(--x) { result: var(--x); }
+  .s7 { background-image: image-set(--pass("{{ASSETS}}/img/lazy-6.png?ss-s7") 1x); }
+  @function --wrap(--x) { result: image-set(var(--x) 1x); }
+  .s7b { background-image: --wrap("{{ASSETS}}/img/lazy-7.png?ss-s7b"); }
+  @p\72operty --px { syntax: "*"; inherits: false; initial-value: "{{ASSETS}}/img/lazy-7.png?ss-s12"; }
+  .s12 { background-image: image-set(var(--px) 1x); }
+  @property --pw { syntax: "*"; inherits: false; initial-v\61lue: "{{ASSETS}}/img/lazy-8.png?ss-s13"; }
+  .s13 { background-image: image-set(var(--pw) 1x); }
+</style>
+<!-- postcss cannot parse an at-rule whose whole name is escaped -->
+<style>
+  @\70roperty --pv { syntax: "*"; inherits: false; initial-value: "{{ASSETS}}/img/lazy-1.png?ss-s11"; }
+  .s11 { background-image: image-set(var(--pv) 1x); }
+</style>
+<!-- nor a sheet whose last rule leaves a bracket open (the end of the sheet closes it, live) -->
+<style>
+  @property --py { syntax: "*"; inherits: false; initial-value: "{{ASSETS}}/img/lazy-2.png?ss-s14"; }
+  .s14 { background-image: image-set(var(--py) 1x); }
+  .s14-end { color: rgb(20 20 20
+</style>
+</head>
+<body>
+<main>
+  <article>
+    <h1>A string a substitution brings into an image-set()</h1>
+    <p class="byline">By A. Fixture &middot; 21 October 2026</p>
+    <div class="grid">
+      <div class="box s1"></div>
+      <div class="box" style="background-image:image-set(var(--nope,'{{ASSETS}}/img/lazy-2.png?ss-s2') 1x)"></div>
+      <div class="box s15"></div>
+      <div class="box s4"></div>
+      <div class="box s6"></div>
+      <div class="box s7"></div>
+      <div class="box s7b"></div>
+      <div class="box s11"></div>
+      <div class="box s12"></div>
+      <div class="box s13"></div>
+      <div class="box s14"></div>
+      <svg width="160" height="64"><rect width="160" height="64" fill="#4a6" mask="image-set('{{ASSETS}}/img/lazy-3.png?ss-h1' 1x)"/></svg>
+      <svg width="160" height="64"><rect width="160" height="64" fill="#46a"><set attributeName="mask" to="image-set('{{ASSETS}}/img/lazy-5.png?ss-h23' 1x)" begin="0s"/></rect></svg>
+    </div>
+  </article>
+</main>
+</body>
+</html>
