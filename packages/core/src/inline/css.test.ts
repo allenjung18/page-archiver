@@ -477,6 +477,40 @@ describe("a custom property's string, which var() can bring into an image-set()"
     expect(await inlineCustomPropertyStrings(`--bs-breadcrumb-divider:'/'`, "http://s.test/", ctx, "list")).toBe(`--bs-breadcrumb-divider:'/'`);
   });
 
+  // must-fix 39: a server that declares the wrong type for an image. Chromium decodes a raster
+  // image by its bytes whatever the type says, so the page drew it, and the archive must too.
+  const servedAs = (mime: string, bytes: Buffer, url = "http://s.test/a.png") => {
+    const { ctx, asked } = site({});
+    ctx.get = async (u) => {
+      asked.push(u);
+      return u === url ? { url: u, mime, bytes } : null;
+    };
+    ctx.fetched = FETCHED([url]);
+    return { ctx, asked };
+  };
+
+  it("inlines a fetched image whose response declared text/html, by its bytes", async () => {
+    const { ctx } = servedAs("text/html; charset=utf-8", PNG);
+    expect(await inlineCustomPropertyStrings(`--u:"a.png";background-image:image-set(var(--u) 1x)`, "http://s.test/", ctx, "list")).toBe(
+      `--u:"${PNG_URI}";background-image:image-set(var(--u) 1x)`,
+    );
+  });
+
+  it("inlines a fetched image whose response declared application/json, by its bytes", async () => {
+    const { ctx } = servedAs("application/json", PNG);
+    expect(await inlineCss(`.b{--u:"a.png";background-image:image-set(var(--u) 1x)}`, "http://s.test/", ctx)).toBe(
+      `.b{--u:"${PNG_URI}";background-image:image-set(var(--u) 1x)}`,
+    );
+  });
+
+  it("keeps a string whose non-image response does not sniff as a raster image: HTML, an SVG or a font under text/html", async () => {
+    for (const bytes of [Buffer.from("<!doctype html><p>a page"), Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"), Buffer.from("wOF2xxxx")]) {
+      const { ctx, asked } = servedAs("text/html", bytes);
+      expect(await inlineCustomPropertyStrings(`--u:"a.png"`, "http://s.test/", ctx, "list")).toBe(`--u:"a.png"`);
+      expect(asked).toEqual(["http://s.test/a.png"]);
+    }
+  });
+
   it("reads only custom properties' values, and not a string a url() or an image-set() in one holds", () => {
     const at = (text: string, scope: StringScope) => customPropertyStrings(text, scope).map((r) => r.raw);
     expect(at(`content:"a";--x:"b" 'c';font-family:"d";--y:{ "e"; "f" };--z:"g"`, "list")).toEqual(["b", "c", "e", "f", "g"]);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dataUriLength, effectiveMime, normalizeMime, sniffMime, toDataUri, toListDataUri } from "./datauri.ts";
+import { dataUriLength, effectiveMime, imageMime, normalizeMime, sniffMime, toDataUri, toListDataUri } from "./datauri.ts";
 
 const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
 
@@ -22,6 +22,19 @@ describe("datauri", () => {
     expect(effectiveMime("", Buffer.from("<?xml version='1.0'?><svg></svg>"))).toBe("image/svg+xml");
     expect(effectiveMime("image/jpeg", PNG)).toBe("image/jpeg"); // a declared specific type wins
     expect(effectiveMime(null, Buffer.from("nothing"))).toBe("application/octet-stream");
+  });
+
+  it("finds an image by its declared type, or by a raster signature when the type is not an image's", () => {
+    expect(imageMime("image/jpeg", PNG)).toBe("image/jpeg"); // a declared image type wins
+    expect(imageMime("application/octet-stream", PNG)).toBe("image/png");
+    expect(imageMime("text/html; charset=utf-8", PNG)).toBe("image/png");
+    expect(imageMime("application/json", Buffer.from("GIF89a"))).toBe("image/gif");
+    expect(imageMime("text/html", Buffer.from("<!doctype html>"))).toBeNull();
+    // Chromium takes an SVG image only as image/svg+xml, and a font is never an image
+    expect(imageMime("text/html", Buffer.from("<svg/>"))).toBeNull();
+    expect(imageMime("", Buffer.from("<svg/>"))).toBe("image/svg+xml");
+    expect(imageMime("application/json", Buffer.from("wOF2xxxx"))).toBeNull();
+    expect(imageMime(null, Buffer.from(""))).toBeNull();
   });
 
   it("knows the common signatures", () => {

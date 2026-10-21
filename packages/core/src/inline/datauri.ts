@@ -36,6 +36,23 @@ export function effectiveMime(mime: string | undefined | null, bytes: Uint8Array
   return sniffMime(bytes) ?? (declared || "application/octet-stream");
 }
 
+/** What an image decoder reads by its first bytes, whatever type the response declared. */
+const DECODED_BY_SIGNATURE = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/x-icon", "image/avif"];
+
+/**
+ * The image type to put in a data: URI for these bytes, or null when they are not an image. The
+ * declared type when it is an image's; a generic one is sniffed (effectiveMime). A declared type
+ * that is neither (a PNG served as text/html or application/json) is sniffed too, for a raster
+ * image's signature only: Chromium decodes one by its bytes whatever the type says, as it does
+ * not an SVG, a font or anything else, which stay null.
+ */
+export function imageMime(mime: string | undefined | null, bytes: Uint8Array): string | null {
+  const type = effectiveMime(mime, bytes);
+  if (type.startsWith("image/")) return type;
+  const sniffed = sniffMime(bytes);
+  return sniffed && DECODED_BY_SIGNATURE.includes(sniffed) ? sniffed : null;
+}
+
 /** A base64 data: URI. Text types (CSS, SVG) are marked utf-8 so non-ASCII survives. */
 export function toDataUri(bytes: Uint8Array, mime: string | undefined | null): string {
   const type = effectiveMime(mime, bytes);

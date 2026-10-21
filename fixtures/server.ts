@@ -100,11 +100,12 @@ function pagesHandler(assetsOrigin: () => string) {
 }
 
 function assetsHandler(req: IncomingMessage, res: ServerResponse): void {
-  const path = new URL(req.url ?? "/", "http://x").pathname;
-  const file = resolveInside(assetsDir, path);
+  const url = new URL(req.url ?? "/", "http://x");
+  const file = resolveInside(assetsDir, url.pathname);
   if (!file) return notFound(res);
   res.writeHead(200, {
-    "content-type": MIME[extname(file)] ?? "application/octet-stream",
+    // ?type=<mime> declares another type, as a misconfigured server does (a PNG as text/html)
+    "content-type": url.searchParams.get("type") || (MIME[extname(file)] ?? "application/octet-stream"),
     // fonts and fetch() need CORS across the two ports; images and sheets do not
     "access-control-allow-origin": "*",
     "cache-control": "no-store",

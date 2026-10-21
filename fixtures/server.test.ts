@@ -90,6 +90,13 @@ describe("fixture server", () => {
     expect(await res.text()).toContain('<symbol id="star"');
   });
 
+  it("declares the type a ?type= names, as a misconfigured server does, and the file's own otherwise", async () => {
+    const wrong = await fetch(`${server.assetsOrigin}/img/lazy-6.png?type=text/html`);
+    expect(wrong.headers.get("content-type")).toBe("text/html");
+    expect(Buffer.from(await wrong.arrayBuffer()).subarray(1, 4).toString()).toBe("PNG");
+    expect((await fetch(`${server.assetsOrigin}/img/lazy-6.png?type=`)).headers.get("content-type")).toBe("image/png");
+  });
+
   it("does not serve pages from the assets port or assets from the pages port", async () => {
     expect((await fetch(`${server.assetsOrigin}/plain-article.html`)).status).toBe(404);
     expect((await fetch(`${server.pagesOrigin}/img/hero.png`)).status).toBe(404);

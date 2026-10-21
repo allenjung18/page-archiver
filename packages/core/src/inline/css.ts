@@ -7,7 +7,7 @@
 import postcss, { type AtRule, type ChildNode, type Declaration, type Root } from "postcss";
 import { utf8 } from "../bytes.ts";
 import type { Resource } from "../resources.ts";
-import { effectiveMime, toDataUri } from "./datauri.ts";
+import { imageMime, toDataUri } from "./datauri.ts";
 import { pruneFontSrc, type FontFilter } from "./fonts.ts";
 
 /** Where inlining gets bytes from (the capture's resolver), and where it reports. */
@@ -641,7 +641,8 @@ export function customPropertyStrings(text: string, scope: StringScope): CssRef[
  * error, a cap) is set aside, as "data:" and a comment with its URL. Any other string is kept as
  * written, a resource that is not an image too ("/" names the page itself): a custom property
  * holds font names and `content` text as often as images, a var() fallback or an if() branch may
- * never be the value, and only the browser's fetch and the image's type tell them apart. With no
+ * never be the value, and only the browser's fetch and the image's type tell them apart (imageMime:
+ * the declared type, or a raster image's signature when that type is not an image's). With no
  * ctx.fetched (a caller that did not record the page's loads), every string is kept as written.
  */
 export async function inlineCustomPropertyStrings(text: string, base: string, ctx: CssContext, scope: StringScope): Promise<string> {
@@ -657,8 +658,10 @@ export async function inlineCustomPropertyStrings(text: string, base: string, ct
       if (!url || !(fetched(url) || requested(url))) return asWritten;
       const res = await ctx.get(url);
       if (!res) return `"data:" /*${unfetchedNote("", url)}*/`;
-      // an image-set() takes only images: a string that names the page or a sheet is text
-      return effectiveMime(res.mime, res.bytes).startsWith("image/") ? `"${toDataUri(res.bytes, res.mime)}"` : asWritten;
+      // an image-set() takes only images: a string that names the page or a sheet is text; a
+      // raster image served under a text type (text/html, application/json) is still an image
+      const mime = imageMime(res.mime, res.bytes);
+      return mime ? `"${toDataUri(res.bytes, mime)}"` : asWritten;
     }),
   );
   let out = "";
