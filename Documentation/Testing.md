@@ -38,7 +38,8 @@ the depth cap (`deep-frames`), an `@import` chain, an `@import` written with CSS
 (`escaped-import`), `url()` and `image-set()` names written with CSS escapes (`escaped-url`), lazy images,
 external references (`<object>`, `<embed>` and SVG `<use>` of a sprite file, in
 `fixtures/pages/sprites/`), SVG effects and paints from another file, an SVG `cursor` image and
-`image-set()` strings (`svg-effects`), link hints (fetch hints and touch icons), video and audio, a news article, a plain article,
+`image-set()` strings (`svg-effects`), SVG `<set>` and `<animate>` elements that write a URL
+attribute (`smil-urls`), link hints (fetch hints and touch icons), video and audio, a news article, a plain article,
 shadow DOM, a single-page app, `srcset`, resources the site answers with an error
 (`unfetched`), web fonts. `fixtures/import/` holds SingleFile saves for
 `pa import`. The binary assets are generated (`fixtures/make-images.ts`), or made as their

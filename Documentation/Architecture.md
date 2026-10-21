@@ -129,7 +129,8 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   cannot be had is set aside and reported.
 - **Set aside** (D-516): a resource the capture cannot have (an HTTP error, a cap) never stays a
   live reference, so no archive asks the network for anything, even opened from disk with no CSP.
-  That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes and an SVG `cursor` too (below), and for
+  That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes, an SVG `cursor` and
+  the values an SVG `<set>` or `<animate>` writes into any of those URL attributes too (below), and for
   a `url()` or `image-set()` whose name is written with CSS escapes: each one's file is inlined or
   set aside, never left as a URL. An uncaptured frame's `srcdoc` is set
   aside whole (Assemble, above).
@@ -165,6 +166,19 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   `style` attribute's are, never copied in as an element. One that cannot be had becomes
   `UNFETCHED_URL`, so the cursor passes to the next as it did live, its URL in
   `data-page-archiver-unfetched-cursor`.
+- **SVG animations that write a URL attribute** (`inlineAnimation`, `ANIMATION_ELEMENTS`): a
+  `<set>` or `<animate>` runs again when the archive opens, so when its `attributeName` is an
+  `href` (`xlink:href` too) or one of `SVG_REF_ATTRIBUTES` or `SVG_IMAGE_ATTRIBUTES`, every value
+  it writes (`to`, `from`, `by`, and each of `values`, split at every `;` as Chromium splits it) is
+  made what that attribute itself is made. For an `href` that depends on the element animated
+  (the one the animation's `href="#id"` names, else its parent): an `<image>` or `<feImage>`'s
+  image becomes a `data:` URI, a `<use>`'s element is copied in and the value is the copy's `#id`,
+  an `<a>`'s link is made absolute, and any other element's (or no element's) is set aside with a
+  warning. A `url()` value is inlined or copied in as the attribute's is. In a `values` list a
+  `data:` URI is percent-encoded with no `;` (`toListDataUri`). One that cannot be had becomes a
+  value that fails without the network (`UNFETCHED_HREF`, `data:,`; `UNFETCHED_URL`; the failed
+  reference's fallback), its URL in `data-page-archiver-unfetched-<to|from|by|values>`. A copied
+  sprite's own `href` animation has its `#id`s renamed with the copy's.
 - Icons: a `<link>` whose `rel` is one of `ICON_RELS` (`icon`, `apple-touch-icon`,
   `apple-touch-icon-precomposed`) is inlined, or removed when it cannot be had.
 - **Video and audio** (`freezeMedia`): media files are not archived. The `src` of a `<video>` or
@@ -212,7 +226,8 @@ strips `on*` attributes, `REMOVED_ATTRIBUTES` (`ping`, and `attributionsrc`, an 
 request a file opened from disk would send), any `URL_ATTRIBUTES` value that is a
 script URL (`isScriptUrl`), a `data:` document in a frame, embed or object
 (`DOCUMENT_URL_ATTRIBUTES`), and SVG animations that would write a script URL; `srcdoc` is
-sanitized recursively. `sanitizeHtml` is the same over a string.
+sanitized recursively. An animation that writes any other URL is kept, and its values are
+inlined or set aside with the rest of the document (`inlineAnimation`, above). `sanitizeHtml` is the same over a string.
 
 ## The archive file
 
