@@ -123,7 +123,8 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   `image-set()` and `-webkit-image-set()`, inlined (`inlineUrls`). A function's name is read as
   Chromium reads it, its CSS escapes decoded (`urlTokens`, `imageSetStrings`): `\75rl(`, `u\72l(`
   and `\55 RL(` are `url(`s and `image-s\65t(` is an `image-set(`, in a sheet, a `style`
-  attribute, a font's `src` list and an SVG attribute alike. A `url()` and a string are read as
+  attribute, a font's `src` list and an SVG attribute alike (of the SVG attributes only a `mask`
+  and a `cursor` take an image, so only theirs have an `image-set()` read, below). A `url()` and a string are read as
   the CSS tokenizer reads them (`urlAt`, `stringAt`), which is how Chromium reads them: the end of
   the text closes an open `url(` or string (a `style` attribute, or a `<style>` postcss cannot
   parse, may end inside one); a backslash before a newline in a string is a line continuation;
@@ -170,8 +171,10 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
 - **Set aside** (D-516): a resource the capture cannot have (an HTTP error, a cap) never stays a
   live reference, so an archive opened from disk with no CSP asks the network for nothing the page
   loaded (the one live URL that can remain is a string a substitution may bring into an
-  `image-set()`, a custom property's, a fallback's or an `if()` branch's, that the page never
-  fetched, above).
+  `image-set()`, a custom property's, a fallback's, an `if()` branch's or a custom function's,
+  that the page did not ask for while it was saved, or, in an extension save of a page past its
+  250 resource timing entries, one naming an image the page loaded that the extension did not
+  see; above).
   That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes, an SVG `cursor` and
   the values an SVG `<set>` or `<animate>` writes into any of those URL attributes too (below), and for
   a `url()` or `image-set()` whose name is written with CSS escapes or that is written in any shape

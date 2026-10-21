@@ -3,7 +3,7 @@
 Give it a URL (from the terminal, or one click in Chrome on the page you are
 reading) and it saves the page as one self-contained `.html` file that
 opens correctly offline, years from now, in any browser: styles, images and
-fonts inside the file, no scripts, and nothing the page loaded left to fetch. Each save also gets a
+fonts inside the file, no scripts, and nothing the page loaded left to fetch (one narrow exception is named below). Each save also gets a
 clean reader-view copy and goes into a local, full-text-searchable library you
 browse in a small local web app. Your archive is a folder on your disk; no
 Pocket, no Instapaper, no subscription.
@@ -72,11 +72,15 @@ stamps the file with `page-archiver:*` metas (source URL, capture time, tool ver
 a sha256 of the file). A resource that cannot be had (the site answers an error, or it is over a
 size cap) is set aside: its URL moves into a `data-page-archiver-unfetched-*` attribute or a CSS
 comment, and a warning names it, so the archive opened straight from disk asks the network
-for nothing the page loaded. One kind of URL is kept as written: a string that a CSS custom
-property, a `var()` fallback or an `if()` branch may bring into an `image-set()` and that the page
-did not ask for while it was saved (an image used only on `:hover`, or a branch the page did not
-take, say), because nothing else tells it from a font name or `content` text. Opened from disk, the archive fetches it if that rule ever applies; served by the library,
-its CSP refuses the request.
+for nothing the page loaded (one exception, for a save from the extension, is below). One kind of
+URL is kept as written: a string that a CSS substitution (a custom property, a `var()`, `env()` or
+`attr()` fallback, an `if()` branch, a custom `@function`) may bring into an `image-set()` and that
+the page did not ask for while it was saved (an image used only on `:hover`, or a branch the page
+did not take, say), because nothing else tells it from a font name or `content` text. The Chrome
+extension learns what the page asked for from the browser's resource timing, which keeps 250
+entries unless the page enlarges it, so on a page with more resources than that, such a string
+naming an image the page did load may be kept as written too. Opened from disk, the archive
+fetches a kept URL if that value ever applies; served by the library, its CSP refuses the request.
 
 Video and audio files are not archived: they are often hundreds of megabytes, streamed in
 pieces, or both. Each `<video>` keeps a still of the frame it was showing as its poster (or the
