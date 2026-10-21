@@ -35,7 +35,10 @@ One page per hard case of a capture, in `fixtures/pages/`: adopted sheets, an `a
 attribution request (`attribution-src`), canvas, a cookie wall, CSS-in-JS, stylesheets written as `data:` URLs and one that does not parse
 (`data-sheets`), form state, nested same- and cross-origin iframes, `srcdoc` frames nested past
 the depth cap (`deep-frames`), an `@import` chain, an `@import` written with CSS escapes
-(`escaped-import`), `url()` and `image-set()` names written with CSS escapes (`escaped-url`), lazy images,
+(`escaped-import`), `url()` and `image-set()` names written with CSS escapes (`escaped-url`), `url()`s
+and `image-set()` strings in the shapes only the CSS tokenizer reads (left open at the end of a
+`<style>` or a `style` attribute, a backslash-newline in a string, a comment before the `)`, a
+no-break or ideographic space in an unquoted one; `css-tokenizer-edges`), lazy images,
 external references (`<object>`, `<embed>` and SVG `<use>` of a sprite file, in
 `fixtures/pages/sprites/`), SVG effects and paints from another file, an SVG `cursor` image and
 `image-set()` strings (`svg-effects`), SVG `<set>` and `<animate>` elements that write a URL

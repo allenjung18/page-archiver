@@ -123,7 +123,15 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   `image-set()` and `-webkit-image-set()`, inlined (`inlineUrls`). A function's name is read as
   Chromium reads it, its CSS escapes decoded (`urlTokens`, `imageSetStrings`): `\75rl(`, `u\72l(`
   and `\55 RL(` are `url(`s and `image-s\65t(` is an `image-set(`, in a sheet, a `style`
-  attribute, a font's `src` list and an SVG attribute alike.
+  attribute, a font's `src` list and an SVG attribute alike. A `url()` and a string are read as
+  the CSS tokenizer reads them (`urlAt`, `stringAt`), which is how Chromium reads them: the end of
+  the text closes an open `url(` or string (a `style` attribute, or a `<style>` postcss cannot
+  parse, may end inside one); a backslash before a newline in a string is a line continuation;
+  comments between a `url()`'s string and its `)` are skipped; and only space, tab, LF, CR and FF
+  are whitespace, so a no-break or ideographic space is part of an unquoted `url()`. A bad url (a
+  quote or a broken escape in an unquoted one) and a bad string (a newline in one) fetch nothing
+  and are left as they came. `parseImport` and the `setImportsAside` fallback read an `@import`'s
+  URL the same way.
 - `img src` (with `srcset`, `sizes`, `loading` removed), `input type=image`, `video poster`,
   SVG `<image>`/`<feImage>` `href`, and `background` become `data:` URIs (`inlineAttr`); one that
   cannot be had is set aside and reported.
@@ -131,8 +139,9 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   live reference, so no archive asks the network for anything, even opened from disk with no CSP.
   That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes, an SVG `cursor` and
   the values an SVG `<set>` or `<animate>` writes into any of those URL attributes too (below), and for
-  a `url()` or `image-set()` whose name is written with CSS escapes: each one's file is inlined or
-  set aside, never left as a URL. An uncaptured frame's `srcdoc` is set
+  a `url()` or `image-set()` whose name is written with CSS escapes or that is written in any shape
+  the tokenizer reads (left open at the end, continued over a line, a comment before its `)`, a
+  no-break space in it): each one's file is inlined or set aside, never left as a URL. An uncaptured frame's `srcdoc` is set
   aside whole (Assemble, above).
   An attribute moves to `UNFETCHED_ATTRIBUTE_PREFIX` + its name (`data-page-archiver-unfetched-src`)
   with its absolute URL; a `url()` becomes `UNFETCHED_URL` (`url("data:,")`, which fails to load
