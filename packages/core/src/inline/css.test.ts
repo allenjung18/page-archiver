@@ -369,9 +369,28 @@ describe("url() and strings read as the CSS tokenizer reads them", () => {
 
   it("leaves a string a newline breaks, and an unquoted url() a backslash-newline breaks, alone: they fetch nothing", async () => {
     const { ctx, asked } = site({ "http://s.test/a.png": PNG });
-    const text = `url("a\n.png") url(a${BS}\n.png) url(a b.png) url(a"b.png) image-set("a\n.png" 1x)`;
+    // one at a time: the quote a bad string leaves behind (`.png")`) opens a string of its own, as it does in Chromium
+    for (const text of [`url("a\n.png")`, `url('a\n.png')`, `url(a${BS}\n.png)`, `image-set("a\n.png" 1x)`]) {
+      expect(await inlineUrls(text, "http://s.test/", ctx), text).toBe(text);
+    }
+    // a bad url's remnants run to its ")": a quote or "(" in them opens nothing, and the url() after it is read
+    const text = `url(a b.png) url(a"b.png) url(a(b.png) url(a${BS}\n"b.png)`;
     expect(await inlineUrls(`${text} url("a.png"`, "http://s.test/", ctx)).toBe(`${text} ${URL_A}`);
     expect(asked).toEqual(["http://s.test/a.png"]);
+  });
+
+  it("reads past comments, strings and a bad url's remnants, so a quote or a url( in one hides nothing after it", async () => {
+    // the end of the text closes a string: a "url(" in a comment or a string must not start one that swallows the rest
+    const { ctx, asked } = site({ "http://s.test/a.png": PNG, "http://s.test/b.png": PNG });
+    for (const lead of [`/* url("note */ `, `content:"url('";`, `--x:"url(";`, `background:url(it's.png);`, `background:url(x"y);`]) {
+      expect(await inlineUrls(`${lead}background:url(a.png)`, "http://s.test/", ctx), lead).toBe(`${lead}background:${URL_A}`);
+      expect(await inlineUrls(`${lead}border-image:image-set("b.png" 1x)`, "http://s.test/", ctx), lead).toBe(`${lead}border-image:image-set(${URL_A} 1x)`);
+    }
+    expect(await inlineUrls(`content:"url(a.png)"`, "http://s.test/", ctx), "a url() in a string fetches nothing").toBe(`content:"url(a.png)"`);
+    expect(asked.filter((u) => u.endsWith("/a.png"))).toHaveLength(5);
+    expect(asked.filter((u) => u.endsWith("/b.png"))).toHaveLength(5);
+    const fallback = await inlineCss(`/*! do not use url("old.png */.a{background:url(a.png)}.b{color:red`, "http://s.test/", site({ "http://s.test/a.png": PNG }).ctx);
+    expect(fallback, "every rule after the comment is kept").toBe(`/*! do not use url("old.png */.a{background:${URL_A}}.b{color:red`);
   });
 
   it("skips comments between a url()'s string and its close paren", async () => {

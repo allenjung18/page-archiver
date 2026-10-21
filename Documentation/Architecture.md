@@ -130,8 +130,9 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   comments between a `url()`'s string and its `)` are skipped; and only space, tab, LF, CR and FF
   are whitespace, so a no-break or ideographic space is part of an unquoted `url()`. A bad url (a
   quote or a broken escape in an unquoted one) and a bad string (a newline in one) fetch nothing
-  and are left as they came. `parseImport` and the `setImportsAside` fallback read an `@import`'s
-  URL the same way.
+  and are left as they came. Comments, strings and a bad url's remnants are read past as the
+  tokenizer reads them, so a `url(` or a quote in one is not a `url()` and hides nothing after it.
+  `parseImport` and the `setImportsAside` fallback read an `@import`'s URL the same way.
 - `img src` (with `srcset`, `sizes`, `loading` removed), `input type=image`, `video poster`,
   SVG `<image>`/`<feImage>` `href`, and `background` become `data:` URIs (`inlineAttr`); one that
   cannot be had is set aside and reported.

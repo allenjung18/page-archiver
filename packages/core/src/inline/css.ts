@@ -220,31 +220,63 @@ function isNonPrintable(c: string): boolean {
  * nothing (null). In both, the end of the text closes it, as it closes a string.
  */
 function urlAt(text: string, i: number, fn = functionAt(text, i)): CssRef | null {
+  return urlTokenAt(text, i, fn)?.ref ?? null;
+}
+
+/**
+ * urlAt's reading, with where the tokenizer goes on reading after it (`end`): past the url(), past
+ * a bad url's remnants (up to its ")" or the end, escapes included, a quote in them not a string),
+ * or, for a url() function that is not a URL, past its string. Null when no url( starts at text[i].
+ */
+function urlTokenAt(text: string, i: number, fn = functionAt(text, i)): { ref: CssRef | null; end: number } | null {
   if (fn?.name !== "url") return null;
   let k = fn.open + 1;
   while (isCssSpace(text[k])) k++;
-  const ref = (end: number, raw: string): CssRef => ({ index: i, length: Math.min(end, text.length) - i, raw });
+  const ok = (end: number, raw: string) => {
+    const e = Math.min(end, text.length);
+    return { ref: { index: i, length: e - i, raw }, end: e };
+  };
   if (text[k] === '"' || text[k] === "'") {
     const s = stringAt(text, k);
-    if (s.bad) return null;
+    if (s.bad) return { ref: null, end: s.end };
     const close = skipSpaceAndComments(text, s.end);
-    return close >= text.length || text[close] === ")" ? ref(close + 1, s.raw) : null;
+    return close >= text.length || text[close] === ")" ? ok(close + 1, s.raw) : { ref: null, end: s.end };
   }
   const start = k;
   while (k < text.length) {
     const c = text[k]!;
-    if (c === ")") return ref(k + 1, text.slice(start, k));
+    if (c === ")") return ok(k + 1, text.slice(start, k));
     if (isCssSpace(c)) {
       const close = skipSpace(text, k);
-      return close >= text.length || text[close] === ")" ? ref(close + 1, text.slice(start, k)) : null;
+      return close >= text.length || text[close] === ")" ? ok(close + 1, text.slice(start, k)) : { ref: null, end: badUrlEnd(text, k) };
     }
-    if (c === '"' || c === "'" || c === "(" || isNonPrintable(c)) return null;
+    if (c === '"' || c === "'" || c === "(" || isNonPrintable(c)) return { ref: null, end: badUrlEnd(text, k) };
     if (c === "\\") {
-      if (isNewline(text[k + 1])) return null;
+      if (isNewline(text[k + 1])) return { ref: null, end: badUrlEnd(text, k) };
       k = escapeAt(text, k).end;
     } else k++;
   }
-  return ref(text.length, text.slice(start));
+  return ok(text.length, text.slice(start));
+}
+
+/** Where a bad url's remnants from text[k] end: just past its ")", or the end; an escape is read whole, so "\)" does not end it. */
+function badUrlEnd(text: string, k: number): number {
+  while (k < text.length) {
+    const c = text[k];
+    if (c === ")") return k + 1;
+    k = c === "\\" && !isNewline(text[k + 1]) ? escapeAt(text, k).end : k + 1;
+  }
+  return text.length;
+}
+
+/**
+ * Where the tokenizer goes on reading after the name at text[i] (isNameChar): past a url() whole
+ * (a bad one's remnants too), to the "(" of another function, or past the name.
+ */
+function afterName(text: string, i: number, fn = functionAt(text, i)): number {
+  const u = urlTokenAt(text, i, fn);
+  if (u) return u.end;
+  return fn ? fn.open : Math.max(identAt(text, i).end, i + 1);
 }
 
 /** Where the whitespace starting at text[i] ends (no comments: in a url token, "/*" is part of the value). */
@@ -260,22 +292,22 @@ function isUrlEntry(entry: string): boolean {
 
 /**
  * Every url() in text. A name is read whole, as the CSS tokenizer reads it, so "myurl(" is not one;
- * its escapes are decoded, so "\75rl(" is. A url() in a string or a comment is counted too: it
- * fetches nothing, and replacing it costs nothing the page shows.
+ * its escapes are decoded, so "\75rl(" is. Comments and strings are read past as the tokenizer reads
+ * them (a string the end of the text closes runs to the end), so a "url(" in one is not a url(), and
+ * neither is one in a bad url's remnants.
  */
 export function urlTokens(text: string): CssRef[] {
   const found: CssRef[] = [];
   let i = 0;
   while (i < text.length) {
-    if (!isNameChar(text[i])) {
-      i++;
-      continue;
-    }
-    const ref = urlAt(text, i);
-    if (ref) {
-      found.push(ref);
-      i += ref.length;
-    } else i = Math.max(identAt(text, i).end, i + 1);
+    const c = text[i]!;
+    if (c === "/" && text[i + 1] === "*") i = commentEnd(text, i);
+    else if (c === '"' || c === "'") i = stringAt(text, i).end;
+    else if (isNameChar(c)) {
+      const u = urlTokenAt(text, i);
+      if (u?.ref) found.push(u.ref);
+      i = u ? u.end : afterName(text, i);
+    } else i++;
   }
   return found;
 }
@@ -378,10 +410,10 @@ function scanImageSet(text: string, from: number, found: CssRef[]): number {
       if (depth === 0 && atOption && !s.bad) found.push({ index: i, length: s.end - i, raw: s.raw });
       atOption = false;
       i = s.end;
-    } else if (c === "\\") {
+    } else if (isNameChar(c)) {
+      // a name, a url() read whole (a bad one's remnants too: a quote in them is not a string), or a function's name
       atOption = false;
-      // a backslash before a newline is a lone "\", not an escape
-      i = isNewline(text[i + 1]) ? i + 1 : escapeAt(text, i).end;
+      i = afterName(text, i);
     } else {
       atOption = false;
       if (c === "(") depth++;
@@ -409,10 +441,7 @@ export function imageSetStrings(text: string): CssRef[] {
     else if (isNameChar(c)) {
       // a name is read whole, its escapes decoded: "image-s\65t(" is an image-set(
       const fn = functionAt(text, i);
-      const url = fn ? urlAt(text, i, fn) : null;
-      if (url) i += url.length;
-      else if (fn && isImageSet(fn.name)) i = scanImageSet(text, fn.open + 1, found);
-      else i = fn ? fn.open : Math.max(identAt(text, i).end, i + 1);
+      i = fn && isImageSet(fn.name) ? scanImageSet(text, fn.open + 1, found) : afterName(text, i, fn);
     } else i++;
   }
   return found;
@@ -549,7 +578,7 @@ function setImportsAside(css: string, sheetUrl: string): string {
     const c = css[i]!;
     if (c === "/" && css[i + 1] === "*") i = commentEnd(css, i);
     else if (c === '"' || c === "'") i = stringAt(css, i).end;
-    else if (c === "\\") i += 2;
+    else if (isNameChar(c)) i = afterName(css, i);
     else if (c === "@" && !/[\w\-\\]/.test(css[i - 1] ?? "") && isImportAt(css, i + 1)) {
       // the name may be written with escapes ("@\69mport"), which Chromium decodes
       const nameEnd = identAt(css, i + 1).end;
@@ -557,6 +586,7 @@ function setImportsAside(css: string, sheetUrl: string): string {
       while (end < css.length && css[end] !== ";" && css[end] !== "{" && css[end] !== "}") {
         if (css[end] === '"' || css[end] === "'" || css[end] === "(") end = groupEnd(css, end);
         else if (css[end] === "/" && css[end + 1] === "*") end = commentEnd(css, end);
+        else if (isNameChar(css[end])) end = afterName(css, end);
         else end++;
       }
       const p = parseImport(css.slice(nameEnd, end));
