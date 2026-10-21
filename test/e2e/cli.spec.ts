@@ -1,6 +1,6 @@
 // `pa save <url> -o <file>` end to end: the built CLI captures a fixture into the named file.
 import { execFile, spawn } from "node:child_process";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -92,10 +92,13 @@ test("exit codes: 2 for a usage error, 1 for a failure at run time, 0 for help",
   // a search with no hit, and an import of a file that is not there, are failures, not usage errors
   expect(await pa(["search", "nothingwillmatchthis"])).toMatchObject({ code: 1, stderr: expect.stringContaining("no matches for nothingwillmatchthis") });
   const missing = test.info().outputPath("missing.html");
-  const bad = await pa(["import", missing]);
+  const good = test.info().outputPath("good.html");
+  writeFileSync(good, `<!DOCTYPE html><html><!--\n Page saved with SingleFile\n url: https://import.example/good\n saved date: 2026-03-12T10:00:00Z\n--><head><meta charset="utf-8"><title>Good import</title></head><body><article><h1>Good import</h1><p>Some ordinary prose, long enough to be worth keeping as the main text of a page.</p></article></body></html>`);
+  // one bad file among good ones still fails the command, and the good one is imported
+  const bad = await pa(["import", missing, good]);
   expect(bad.code).toBe(1);
-  expect(bad.stderr).toContain("pa: ");
-  expect(bad.stderr).toContain("missing.html");
+  expect(bad.stderr).toMatch(/^pa: .*missing\.html: /m);
+  expect(bad.stdout).toContain(`imported ${good} as `);
   // a page that cannot be loaded at all
   const closed = await new Promise<number>((resolve) => {
     const s = createServer();

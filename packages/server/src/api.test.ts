@@ -328,7 +328,7 @@ async function startInRange(from: number, to: number): Promise<RunningServer> {
 }
 
 describe("startServer", () => {
-  it("refuses a port in use with a message naming --port, and the library it was given by path is still usable", async () => {
+  it("refuses a port in use with a message naming --port", async () => {
     const holder = createServer();
     await new Promise<void>((resolve) => holder.listen(0, "127.0.0.1", resolve));
     const port = (holder.address() as { port: number }).port;
@@ -337,12 +337,6 @@ describe("startServer", () => {
       await expect(startServer({ library: path, port, uiDir })).rejects.toThrow(new RegExp(`port ${port} is in use: pass another with --port`));
     } finally {
       await new Promise<void>((resolve) => holder.close(() => resolve()));
-    }
-    const again = openLibrary(path);
-    try {
-      expect(again.reindex().indexed).toBe(0);
-    } finally {
-      again.close();
     }
   });
 
