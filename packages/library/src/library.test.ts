@@ -151,6 +151,15 @@ describe("reindex", () => {
     expect(lib.list()).toEqual(pages);
   });
 
+  it("keeps a page whose saved date is past the year 9999, filed under the file's own time", async () => {
+    const far = file("far.html", save({ url: "https://far.example/p", title: "Far Future", body: "A vellichor ledger.", savedAt: "Sat Jan 01 10000 00:00:00 GMT+0000" }));
+    const page = await lib.importFile(far);
+    lib.reindex();
+    expect(lib.list(), "pages after a reindex").toHaveLength(4);
+    expect(page.dir).toMatch(/^\d{4}\/\d{2}\//);
+    expect(lib.search("vellichor").map((p) => p.id)).toEqual([page.id]);
+  });
+
   it("passes over unfinished and broken folders, and says which", () => {
     // a capture that died before meta.json, and one whose meta.json is not JSON
     mkdirSync(join(lib.root, "2026/08/half-done-aaaaaaaaaaaa"), { recursive: true });

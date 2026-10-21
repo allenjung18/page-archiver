@@ -5,7 +5,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { ARCHIVE_FILE, META_FILE, READER_FILE, type PageMeta } from "@page-archiver/core";
+import { ARCHIVE_FILE, captureDate, META_FILE, READER_FILE, type PageMeta } from "@page-archiver/core";
 import { archiveText, readerText } from "./text.ts";
 
 /** Where the library lives when nothing else says. */
@@ -39,8 +39,10 @@ export function slugify(title: string, max = 60): string {
 
 /** A capture's folder, relative to the library root: YYYY/MM/<slug>-<id>, the month in UTC. */
 export function captureFolder(meta: Pick<PageMeta, "id" | "title" | "capturedAt">): string {
-  const at = new Date(meta.capturedAt);
-  if (Number.isNaN(at.getTime())) throw new Error(`capture ${meta.id} has no valid capturedAt: ${meta.capturedAt}`);
+  // a year folder is four digits (listCaptureFolders): a time outside 1000-9999 would be filed
+  // where no reindex finds it
+  const at = captureDate(new Date(meta.capturedAt));
+  if (!at) throw new Error(`capture ${meta.id} has no capturedAt in the years 1000 to 9999: ${meta.capturedAt}`);
   const yyyy = String(at.getUTCFullYear()).padStart(4, "0");
   const mm = String(at.getUTCMonth() + 1).padStart(2, "0");
   return `${yyyy}/${mm}/${slugify(meta.title)}-${meta.id}`;
@@ -95,7 +97,7 @@ function checkMeta(value: unknown): PageMeta {
     if (typeof m[k] !== "string" || !m[k]) throw new Error(`meta.json has no ${k}`);
   }
   if (!/^[0-9a-z]{12}$/.test(m.id!)) throw new Error(`meta.json has a malformed id: ${m.id}`);
-  if (Number.isNaN(new Date(m.capturedAt!).getTime())) throw new Error(`meta.json has a malformed capturedAt: ${m.capturedAt}`);
+  if (!captureDate(new Date(m.capturedAt!))) throw new Error(`meta.json has a malformed capturedAt (or one outside the years 1000 to 9999): ${m.capturedAt}`);
   if (m.tags !== undefined && (!Array.isArray(m.tags) || m.tags.some((t) => typeof t !== "string"))) throw new Error("meta.json tags is not a list of strings");
   return { ...m, tags: m.tags ?? [] } as PageMeta;
 }

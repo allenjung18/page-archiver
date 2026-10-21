@@ -22,6 +22,14 @@ describe("readSingleFileHeader", () => {
     expect(readSingleFileHeader("<!doctype html><!-- hello --><p>x")).toBeNull();
     expect(readSingleFileHeader("<!--\n Page saved with SingleFile\n url: https://a.test/\n saved date: not a date\n-->")).toEqual({ url: "https://a.test/", savedAt: null });
   });
+
+  it("takes a date outside the years 1000 to 9999 as no date (a library folder is named by a four-digit year)", () => {
+    for (const date of ["Sat Jan 01 10000 00:00:00 GMT+0000", "Mon Jan 01 0999 00:00:00 GMT+0000"]) {
+      const html = `<!--\n Page saved with SingleFile\n url: https://a.test/\n saved date: ${date}\n-->`;
+      expect(readSingleFileHeader(html), date).toEqual({ url: "https://a.test/", savedAt: null });
+    }
+    expect(readSingleFileHeader("<!--\n Page saved with SingleFile\n url: https://a.test/\n saved date: Fri Dec 31 9999 23:59:59 GMT+0000\n-->")?.savedAt).toEqual(new Date("9999-12-31T23:59:59Z"));
+  });
 });
 
 describe("importHtml", () => {
@@ -85,6 +93,12 @@ describe("importHtml of an archive page-archiver made (the Chrome extension's)",
     expect(verifyStamp(a.html)).toBe(true);
     // nothing changed, so the import is the same bytes
     expect(a.html).toBe(ours());
+  });
+
+  it("takes a stamped capture time outside the years 1000 to 9999 as no time", () => {
+    const doc = parseDocument(`<!doctype html><title>Far</title><p>Captured text.</p>`);
+    stamp(doc, { sourceUrl: "https://made.test/far", capturedAt: new Date("+010000-01-01T00:00:00Z"), toolVersion: "0.1.0", warnings: [] });
+    expect(readOwnStamp(finalizeStamp(serializeDocument(doc)).html)?.savedAt).toBeNull();
   });
 
   it("still sanitizes it, whatever it claims to be", () => {

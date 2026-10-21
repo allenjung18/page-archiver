@@ -27,6 +27,16 @@ export interface SavedHeader extends SingleFileHeader {
 
 const HEADER_MARK = /saved with SingleFile/i;
 
+/**
+ * A date a capture may be filed under, or null: valid, and in the years 1000 to 9999 (a library
+ * folder is named by a four-digit year, and an ISO time past 9999 is written "+010000-...").
+ */
+export function captureDate(d: Date | null): Date | null {
+  if (!d || Number.isNaN(d.getTime())) return null;
+  const year = d.getUTCFullYear();
+  return year >= 1000 && year <= 9999 ? d : null;
+}
+
 /** The url and saved date from a SingleFile save's header comment; null when it has none. */
 export function readSingleFileHeader(html: string): SingleFileHeader | null {
   for (const m of html.slice(0, 64 * 1024).matchAll(/<!--([\s\S]*?)-->/g)) {
@@ -34,8 +44,7 @@ export function readSingleFileHeader(html: string): SingleFileHeader | null {
     if (!HEADER_MARK.test(body)) continue;
     const url = /^\s*url:\s*(\S+)\s*$/m.exec(body)?.[1] ?? null;
     const date = /^\s*saved date:\s*(.+?)\s*$/m.exec(body)?.[1]?.replace(/\s*\([^)]*\)\s*$/, "");
-    const savedAt = date ? new Date(date) : null;
-    return { url, savedAt: savedAt && !Number.isNaN(savedAt.getTime()) ? savedAt : null };
+    return { url, savedAt: date ? captureDate(new Date(date)) : null };
   }
   return null;
 }
@@ -52,7 +61,7 @@ export function readOwnStamp(html: string): SavedHeader | null {
   } catch {
     // an unreadable warnings meta is dropped, never fatal
   }
-  return { tool: "page-archiver", url: s["source-url"], savedAt: Number.isNaN(at.getTime()) ? null : at, warnings };
+  return { tool: "page-archiver", url: s["source-url"], savedAt: captureDate(at), warnings };
 }
 
 /**
