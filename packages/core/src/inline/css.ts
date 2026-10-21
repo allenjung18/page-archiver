@@ -28,8 +28,9 @@ export interface CssContext {
 /** @import nesting deeper than this is dropped with a warning. */
 export const MAX_IMPORT_DEPTH = 16;
 
-// url( "…" | '…' | bare ) — CSS escapes inside are kept as written and unescaped on use.
-const URL_TOKEN = /url\(\s*(?:"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|((?:[^)\s"'\\]|\\.)*))\s*\)/gi;
+// A url()'s arguments from its "(": "…" | '…' | bare — CSS escapes inside are kept as written and
+// unescaped on use. Its name is read by urlAt, which decodes escapes in it as Chromium does.
+const URL_ARGS = /\(\s*(?:"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|((?:[^)\s"'\\]|\\.)*))\s*\)/y;
 
 function unescapeCss(s: string): string {
   return s.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16))).replace(/\\(.)/g, "$1");
@@ -116,19 +117,66 @@ export interface CssRef {
   raw: string;
 }
 
-/** Every url() token in text. */
+/** True when c can be part of a CSS name: a letter, digit, "_", "-", a non-ASCII character, or the backslash of an escape. */
+function isNameChar(c: string | undefined): boolean {
+  return c !== undefined && (/[\w\-\\]/.test(c) || c.charCodeAt(0) >= 0x80);
+}
+
+/**
+ * The function whose name starts at text[i] (its name decoded and lower-cased, and where its "("
+ * is), or null when no name there is followed by "(".
+ */
+function functionAt(text: string, i: number): { name: string; open: number } | null {
+  const id = identAt(text, i);
+  return id.name && text[id.end] === "(" ? { name: id.name.toLowerCase(), open: id.end } : null;
+}
+
+/** The url() starting at text[i], or null. Its name may be written with escapes: "\75rl(", "u\72l(" and "\55 RL(" are url(. */
+function urlAt(text: string, i: number, fn = functionAt(text, i)): CssRef | null {
+  if (fn?.name !== "url") return null;
+  URL_ARGS.lastIndex = fn.open;
+  const m = URL_ARGS.exec(text);
+  return m ? { index: i, length: URL_ARGS.lastIndex - i, raw: m[1] ?? m[2] ?? m[3] ?? "" } : null;
+}
+
+/** True when a font's src entry is a url() (its name may be written with escapes), not a local(). */
+function isUrlEntry(entry: string): boolean {
+  return urlAt(entry.trim(), 0) !== null;
+}
+
+/**
+ * Every url() in text. A name is read whole, as the CSS tokenizer reads it, so "myurl(" is not one;
+ * its escapes are decoded, so "\75rl(" is. A url() in a string or a comment is counted too: it
+ * fetches nothing, and replacing it costs nothing the page shows.
+ */
 export function urlTokens(text: string): CssRef[] {
-  return [...text.matchAll(URL_TOKEN)].map((m) => ({ index: m.index, length: m[0].length, raw: m[1] ?? m[2] ?? m[3] ?? "" }));
+  const found: CssRef[] = [];
+  let i = 0;
+  while (i < text.length) {
+    if (!isNameChar(text[i])) {
+      i++;
+      continue;
+    }
+    const ref = urlAt(text, i);
+    if (ref) {
+      found.push(ref);
+      i += ref.length;
+    } else i = Math.max(identAt(text, i).end, i + 1);
+  }
+  return found;
 }
 
 /** True when CSS text may name a resource that inlining replaces: a url(), or a string in an image-set(). */
 export function hasCssRefs(text: string): boolean {
-  return /url\(|image-set\(/i.test(text);
+  if (/url\(|image-set\(/i.test(text)) return true;
+  // a name written with escapes ("\75rl(", "image-s\65t(") is read as Chromium reads it
+  return text.includes("\\") && (urlTokens(text).length > 0 || imageSetStrings(text).length > 0);
 }
 
-const IMAGE_SET_AT = /(?:-webkit-)?image-set\(/iy;
-const URL_AT = new RegExp(URL_TOKEN.source, "iy");
-const IDENT_CHAR = /[\w\-\\]/;
+/** True when a function name (decoded, lower-cased) is an image-set(). */
+function isImageSet(name: string): boolean {
+  return name === "image-set" || name === "-webkit-image-set";
+}
 
 /**
  * The CSS identifier starting at text[i], its escapes decoded as the CSS tokenizer decodes them
@@ -248,15 +296,16 @@ export function imageSetStrings(text: string): CssRef[] {
   let i = 0;
   while (i < text.length) {
     const c = text[i]!;
-    const boundary = !IDENT_CHAR.test(text[i - 1] ?? "");
-    URL_AT.lastIndex = i;
-    IMAGE_SET_AT.lastIndex = i;
     if (c === "/" && text[i + 1] === "*") i = commentEnd(text, i);
     else if (c === '"' || c === "'") i = stringAt(text, i)?.end ?? i + 1;
-    else if (c === "\\") i += 2;
-    else if (boundary && URL_AT.test(text)) i = URL_AT.lastIndex;
-    else if (boundary && IMAGE_SET_AT.test(text)) i = scanImageSet(text, IMAGE_SET_AT.lastIndex, found);
-    else i++;
+    else if (isNameChar(c)) {
+      // a name is read whole, its escapes decoded: "image-s\65t(" is an image-set(
+      const fn = functionAt(text, i);
+      const url = fn ? urlAt(text, i, fn) : null;
+      if (url) i += url.length;
+      else if (fn && isImageSet(fn.name)) i = scanImageSet(text, fn.open + 1, found);
+      else i = fn ? fn.open : Math.max(identAt(text, i).end, i + 1);
+    } else i++;
   }
   return found;
 }
@@ -274,7 +323,7 @@ export async function inlineUrls(
   unfetched: (url: string, index: number) => string = (url) => `${UNFETCHED_URL} /*${unfetchedNote("", url)}*/`,
 ): Promise<string> {
   if (!hasCssRefs(text)) return text;
-  const all = [...urlTokens(text), ...(/image-set\(/i.test(text) ? imageSetStrings(text) : [])].sort((a, b) => a.index - b.index);
+  const all = [...urlTokens(text), ...(/image-set\(|\\/i.test(text) ? imageSetStrings(text) : [])].sort((a, b) => a.index - b.index);
   // a "url(" written inside an image-set() string is part of that string, not a url() of its own
   const refs: CssRef[] = [];
   for (const r of all) {
@@ -315,11 +364,10 @@ export function parseImport(params: string): ImportParams | null {
     raw = quoted[1] ?? quoted[2] ?? "";
     rest = rest.slice(quoted[0].length);
   } else {
-    URL_TOKEN.lastIndex = 0;
-    const u = new RegExp(`^${URL_TOKEN.source}`, "i").exec(rest);
+    const u = urlAt(rest, 0);
     if (!u) return null;
-    raw = u[1] ?? u[2] ?? u[3] ?? "";
-    rest = rest.slice(u[0].length);
+    raw = u.raw;
+    rest = rest.slice(u.length);
   }
   rest = rest.trim();
   let layer: string | null = null;
@@ -389,7 +437,7 @@ function setImportsAside(css: string, sheetUrl: string): string {
     if (c === "/" && css[i + 1] === "*") i = commentEnd(css, i);
     else if (c === '"' || c === "'") i = stringAt(css, i)?.end ?? i + 1;
     else if (c === "\\") i += 2;
-    else if (c === "@" && !IDENT_CHAR.test(css[i - 1] ?? "") && isImportAt(css, i + 1)) {
+    else if (c === "@" && !/[\w\-\\]/.test(css[i - 1] ?? "") && isImportAt(css, i + 1)) {
       // the name may be written with escapes ("@\69mport"), which Chromium decodes
       const nameEnd = identAt(css, i + 1).end;
       let end = nameEnd;
@@ -440,11 +488,15 @@ export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, 
     const fetched = ctx.fetched;
     if (!fetched) continue;
     face.walkDecls(/^src$/i, (decl) => {
-      decl.value = pruneFontSrc(decl.value, (entry) => {
-        const m = new RegExp(URL_TOKEN.source, "i").exec(entry);
-        const url = m ? resolveCssUrl(m[1] ?? m[2] ?? m[3] ?? "", sheetUrl) : null;
-        return !!url && fetched(url);
-      });
+      decl.value = pruneFontSrc(
+        decl.value,
+        (entry) => {
+          const ref = urlAt(entry, 0);
+          const url = ref ? resolveCssUrl(ref.raw, sheetUrl) : null;
+          return !!url && fetched(url);
+        },
+        isUrlEntry,
+      );
     });
   }
 

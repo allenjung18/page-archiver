@@ -207,6 +207,25 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html, "no escaped @import left to fetch").not.toMatch(/@(\\69 ?mport|i\\6dport)\s+(url\(|")/);
     },
   },
+  "escaped-url": {
+    // url() and image-set() names written with CSS escapes (\75rl, u\72l, \55 RL, image-s\65t), which Chromium decodes
+    withoutCsp: true,
+    check(html) {
+      // in the <style>, the style attribute, the linked sheet and the image-set(), each image is inlined
+      expect(html).toMatch(/\.a \{[^}]*url\("data:image\/png;base64,/);
+      expect(html).toMatch(/background: #e8d8c0 url\(&quot;data:image\/png;base64,/);
+      expect(html).toMatch(/\.sb \{[^}]*url\("data:image\/png;base64,/);
+      expect(html).toMatch(/image-s\\65t\(url\("data:image\/png;base64,/);
+      // of the font's src list only the escaped woff2 the browser fetched is kept, inlined
+      expect(count(html, "data:font/woff2;base64,")).toBe(1);
+      expect(html).not.toContain("data:font/woff;base64,");
+      // the SVG filter is copied in, the cursor's image inlined
+      expect(html).toContain('filter="url(#page-archiver-sprite-0-soft)"');
+      expect(html).toMatch(/cursor="url\(&quot;data:image\/png;base64,[^"&]+&quot;\) 2 2, pointer"/);
+      expect(html, "no escaped url() left to fetch").not.toMatch(/(\\75 ?rl|u\\72 ?l|\\55 RL)\(\s*(?:&quot;|["'])?(?:http|\/|\.\.)/);
+      expect(html).not.toMatch(/\/(img|fonts)\/[\w-]+\.(png|woff2?)|fx\.svg/);
+    },
+  },
   "external-refs": {
     // the PDF is declared as one, so it is set aside without being fetched; the sprite that is
     // not there answers HTTP 404

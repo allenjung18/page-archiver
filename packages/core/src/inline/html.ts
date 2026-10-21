@@ -543,7 +543,8 @@ async function inlineElements(elements: readonly Element[], ctx: HtmlContext, sp
     if (el.namespaceURI === SVG_NAMESPACE) {
       for (const name of SVG_REF_ATTRIBUTES) {
         const v = getAttr(el, name);
-        if (v !== null && /url\(/i.test(v)) jobs.push(inlineSvgRef(el, name, v, ctx, sprites));
+        // hasCssRefs, not a literal "url(": the name may be written with escapes ("u\72l(")
+        if (v !== null && hasCssRefs(v)) jobs.push(inlineSvgRef(el, name, v, ctx, sprites));
       }
       for (const name of SVG_IMAGE_ATTRIBUTES) {
         const v = getAttr(el, name);

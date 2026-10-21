@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Resource } from "../resources.ts";
-import { inlineCss, inlineUrls, parseImport, resolveCssUrl, type CssContext } from "./css.ts";
+import { hasCssRefs, inlineCss, inlineUrls, parseImport, resolveCssUrl, type CssContext } from "./css.ts";
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const PNG_URI = `data:image/png;base64,${PNG.toString("base64")}`;
@@ -270,5 +270,53 @@ describe("image-set() string arguments", () => {
     const { ctx } = site({ "http://s.test/img/hero.png": PNG });
     const out = await inlineCss(`.hero { background-image: image-set("../img/hero.png" 1x); }`, "http://s.test/css/site.css", ctx);
     expect(out).toBe(`.hero { background-image: image-set(url("${PNG_URI}") 1x); }`);
+  });
+});
+
+describe("a url() or image-set() whose name is written with CSS escapes", () => {
+  // Chromium decodes escapes in a function's name: "\75rl(" is a url(, "image-s\65t(" an image-set(
+  it("inlines a url() named with hex escapes, an escape ended by a space, or an escaped plain letter", async () => {
+    const { ctx, asked } = site({ "http://s.test/a.png": PNG });
+    const text = String.raw`\75rl(a.png) u\72l("a.png") \55 RL( 'a.png' ) \75 \72 \6c (a.png) \url(a.png)`;
+    expect(await inlineUrls(text, "http://s.test/", ctx)).toBe(Array(5).fill(`url("${PNG_URI}")`).join(" "));
+    expect(asked).toHaveLength(5);
+  });
+
+  it("leaves a name that only contains or starts like url alone, as the tokenizer reads names whole", async () => {
+    const { ctx, asked } = site({ "http://s.test/a.png": PNG });
+    const text = String.raw`myurl(a.png) \75rls(a.png) 10url(a.png) my\75rl(a.png)`;
+    expect(await inlineUrls(text, "http://s.test/", ctx)).toBe(text);
+    expect(asked).toEqual([]);
+  });
+
+  it("inlines the strings of an image-set() named with escapes, and tells hasCssRefs about both", async () => {
+    const { ctx } = site({ "http://s.test/a.png": PNG });
+    const text = String.raw`image-s\65t("a.png" 1x), -webkit-im\61ge-set('a.png' 2x), \69mage-set("a.png" 1x)`;
+    expect(await inlineUrls(text, "http://s.test/", ctx)).toBe(
+      String.raw`image-s\65t(url("${PNG_URI}") 1x), -webkit-im\61ge-set(url("${PNG_URI}") 2x), \69mage-set(url("${PNG_URI}") 1x)`,
+    );
+    expect(hasCssRefs(String.raw`background: \75rl(a.png)`)).toBe(true);
+    expect(hasCssRefs(String.raw`background: image-s\65t("a.png" 1x)`)).toBe(true);
+    expect(hasCssRefs(String.raw`content: "\2014"; font-family: \66oo`)).toBe(false);
+  });
+
+  it("inlines one in a stylesheet's declarations, in an @import, and in CSS that does not parse", async () => {
+    const { ctx, asked } = site({ "http://s.test/css/a.png": PNG, "http://s.test/css/b.css": String.raw`.b{background:U\52L(a.png)}` });
+    const out = await inlineCss(String.raw`@import \75rl(b.css);.x{background:\75rl(a.png) no-repeat}`, "http://s.test/css/site.css", ctx);
+    expect(out).toBe(`.b{background:url("${PNG_URI}")}.x{background:url("${PNG_URI}") no-repeat}`);
+    expect(asked.sort()).toEqual(["http://s.test/css/a.png", "http://s.test/css/a.png", "http://s.test/css/b.css"]);
+
+    const broken = await inlineCss(String.raw`@\69mport u\72l(gone.css);.x{background:\75rl(a.png)`, "http://s.test/css/site.css", site({ "http://s.test/css/a.png": PNG }).ctx);
+    expect(broken, "the @import's URL is read").toContain(`/* page-archiver unfetched @import: http://s.test/css/gone.css */`);
+    expect(broken).toContain(`.x{background:url("${PNG_URI}")`);
+  });
+
+  it("narrows a font's src list to the escaped url() the browser fetched, as a plain one is", async () => {
+    const font = Buffer.from("wOF2font");
+    const { ctx, asked } = site({ "http://s.test/f.woff2": font, "http://s.test/f.woff": font });
+    ctx.fetched = (url) => url === "http://s.test/f.woff2";
+    const out = await inlineCss(String.raw`@font-face{font-family:F;src:local(F), \75rl(f.woff2) format("woff2"), url(f.woff) format("woff")}`, "http://s.test/", ctx);
+    expect(out).toBe(`@font-face{font-family:F;src:local(F), url("data:image/png;base64,${font.toString("base64")}") format("woff2")}`);
+    expect(asked, "the src the browser did not fetch is not fetched for the archive").toEqual(["http://s.test/f.woff2"]);
   });
 });

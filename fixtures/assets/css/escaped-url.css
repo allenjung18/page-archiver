@@ -1,0 +1,22 @@
+/* Linked by fixtures/pages/escaped-url.html: a url() whose name is written with CSS escapes, relative to this sheet. */
+body {
+  margin: 0;
+  background: #f4efe3;
+  color: #1d1b16;
+  font: 18px/1.6 Georgia, "Times New Roman", serif;
+}
+main {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+.byline {
+  color: #6b6455;
+  font-size: 15px;
+}
+.sb {
+  width: 320px;
+  height: 120px;
+  margin-top: 16px;
+  background: #c8d0e0 \55 RL(../img/lazy-2.png) no-repeat;
+}

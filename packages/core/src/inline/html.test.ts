@@ -586,3 +586,22 @@ describe("absoluteLink", () => {
     expect(absoluteLink("http://[bad", "http://s.test/")).toBe("http://[bad");
   });
 });
+
+describe("inlineDocument: a url() or image-set() whose name is written with CSS escapes", () => {
+  // Chromium decodes escapes in a function's name, in a <style>, a style attribute and an SVG attribute alike
+  it("inlines it in a <style>, a style attribute and an SVG cursor, and copies in what an SVG filter names", async () => {
+    const { doc, out, warnings } = await run(
+      String.raw`<style>.x{background:\75rl(img/a.png)}</style>` +
+        String.raw`<div id="d" style="background: u\72l('/a.png'), image-s\65t('/a.png' 1x)"></div>` +
+        String.raw`<svg><rect id="r" filter="u\72l(http://cdn.test/fx/fx.svg#soft)" cursor="\55 RL(/a.png) 2 2, pointer"/></svg>`,
+      { "http://site.test/blog/img/a.png": PNG, "http://site.test/a.png": PNG, "http://cdn.test/fx/fx.svg": { mime: SVG, body: FX } },
+    );
+    expect(warnings).toEqual([]);
+    expect(out).toContain(`.x{background:url("${PNG_URI}")}`);
+    expect(getAttr(byId(doc, "d"), "style")).toBe(String.raw`background: url("${PNG_URI}"), image-s\65t(url("${PNG_URI}") 1x)`);
+    const r = byId(doc, "r");
+    expect(getAttr(r, "filter")).toBe(`url(#${SPRITE_ID_PREFIX}0-soft)`);
+    expect(getAttr(r, "cursor")).toBe(`url("${PNG_URI}") 2 2, pointer`);
+    expect(out, "no address left that the archive would fetch").not.toMatch(/cdn\.test|a\.png/);
+  });
+});

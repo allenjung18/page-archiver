@@ -150,10 +150,11 @@ export function splitSrc(value: string): string[] {
 /**
  * The src list with its url() entries narrowed to the first one the browser fetched (`fetched`
  * says, given a url() entry). local() entries stay. When none was fetched the list is unchanged.
+ * `isUrl` tells a url() entry, whose name may be written with CSS escapes ("\75rl("), from the rest.
  */
-export function pruneFontSrc(value: string, fetched: (entry: string) => boolean): string {
+export function pruneFontSrc(value: string, fetched: (entry: string) => boolean, isUrl: (entry: string) => boolean = (e) => /^url\(/i.test(e)): string {
   const entries = splitSrc(value);
-  const chosen = entries.find((e) => /^url\(/i.test(e) && fetched(e));
+  const chosen = entries.find((e) => isUrl(e) && fetched(e));
   if (!chosen) return value;
-  return entries.filter((e) => !/^url\(/i.test(e) || e === chosen).join(", ");
+  return entries.filter((e) => !isUrl(e) || e === chosen).join(", ");
 }
