@@ -204,8 +204,15 @@ sanitized recursively. `sanitizeHtml` is the same over a string.
   sha256 of the file with the hash's own value zeroed (`finalizeStamp`); `verifyStamp` checks
   it, `readStamp` reads the metas back.
 - Served and tested under `ARCHIVE_CSP` (`packages/core/src/archive.ts`):
-  `default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; frame-src data: about:`.
+  `default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; frame-src about:; form-action 'none'; base-uri 'none'; sandbox allow-scripts`.
   Anything left pointing at the network is refused by the browser and seen as a violation.
+  Frames come from `about:` only (a captured frame is a `srcdoc`; the sanitizer strips a
+  `data:` document from a frame). `sandbox` gives an archive opened as a page of its own
+  (`/archive/<id>/original`) an opaque origin, never the server's, and no forms or popups;
+  `form-action 'none'` and `base-uri 'none'` refuse a form target and a `<base>` that slipped
+  past the sanitizer. It allows scripts only because a sandbox without `allow-scripts` makes
+  Chromium draw native controls on every `<video>`; no script runs, since there is no
+  `script-src` and `default-src` is `'none'`.
 
 `meta.json` (`PageMeta`, schema `META_SCHEMA`, `packages/core/src/meta.ts`): id (12 characters
 of `[0-9a-z]`, `newPageId`), url, canonicalUrl, title, byline, site, excerpt, lang, capturedAt,

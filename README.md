@@ -163,12 +163,15 @@ Archived pages are untrusted HTML, so they are never put into the app's own page
 served by its own route, `/archive/<id>/original` or `/archive/<id>/reader`, under
 
 ```
-Content-Security-Policy: default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; frame-src data: about:
+Content-Security-Policy: default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; frame-src about:; form-action 'none'; base-uri 'none'; sandbox allow-scripts
 ```
 
 and shown in an `<iframe sandbox="">` (no scripts, no forms, no popups, no same-origin
 access). Either one alone keeps a script that slipped into an archive from running; the
-tests check both.
+tests check both. The policy's own `sandbox` covers an archive opened directly, outside the
+reader: it runs with no origin (never the server's) and cannot submit a form or set a
+`<base>` (its `allow-scripts` only keeps Chromium from drawing controls on every video; the
+policy itself allows no script).
 
 The API (JSON) under `/api`: `GET pages`, `GET search?q=`, `GET facets`, `GET pages/<id>`
 take the list filters as query parameters (`site`, `tag`, `since`, `until`, `all=1`,
