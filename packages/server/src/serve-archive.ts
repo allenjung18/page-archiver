@@ -1,7 +1,9 @@
 // Archives are untrusted HTML. Each is served as its own document under ARCHIVE_CSP, which
 // allows nothing but inline styles and data: URIs: no script runs (there is no script-src, so
 // default-src 'none' refuses inline and external scripts alike) and nothing reaches the
-// network. The reader UI shows them in an iframe sandboxed without allow-scripts on top of it.
+// network. Its sandbox gives an archive opened directly an opaque origin, never the server's,
+// and no forms; form-action / base-uri 'none' refuse form targets and <base>. The reader UI shows them in an
+// iframe sandboxed without allow-scripts on top of it.
 import { readFile } from "node:fs/promises";
 import { ARCHIVE_CSP, ARCHIVE_FILE, READER_FILE } from "@page-archiver/core";
 

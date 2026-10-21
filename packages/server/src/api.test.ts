@@ -9,7 +9,7 @@ import { createApp, segments, UI_CSP, type Hit } from "./api.ts";
 import { startServer } from "./index.ts";
 
 /** Written out in full on purpose: the header must be these bytes, not whatever the constant says. */
-const EXACT_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; frame-src data: about:";
+const EXACT_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; frame-src about:; form-action 'none'; base-uri 'none'; sandbox allow-scripts";
 const TOKEN = "0123456789abcdef0123456789abcdef";
 const HOST = "127.0.0.1:47999";
 const ORIGIN = `http://${HOST}`;

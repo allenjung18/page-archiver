@@ -18,7 +18,7 @@ const PA = fileURLToPath(new URL("../../packages/cli/dist/index.js", import.meta
 const IMPORT_DIR = fileURLToPath(new URL("../../fixtures/import/", import.meta.url));
 
 /** Written out in full: the header must be exactly these bytes. */
-const EXACT_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; frame-src data: about:";
+const EXACT_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; frame-src about:; form-action 'none'; base-uri 'none'; sandbox allow-scripts";
 
 const SOURDOUGH = "Keeping a Sourdough Starter Alive";
 
@@ -261,6 +261,36 @@ test("a script planted in an archive does not run, in the viewer or opened direc
   await page.waitForTimeout(300);
   expect(planted(), "top level: console").toEqual([]);
   await expect(page.locator("#planted-marker")).toHaveCount(0);
+});
+
+test("an archive opened directly has no origin, cannot submit a form and cannot move its base", async ({ page }) => {
+  const s = await start();
+  const p = s.pages.find((x) => x.title === SOURDOUGH)!;
+  // the sanitizer removes <base>; these are written in afterwards, as a page that slipped
+  // through would carry them
+  const plant =
+    `<base href="${s.url}planted-base/">` +
+    `<a id="planted-link" href="next.html">next</a>` +
+    `<form id="planted-form" action="${s.url}planted-form-target" method="get"><input name="q" value="leak"><button id="planted-submit">go</button></form>`;
+  const path = join(s.lib, p.dir, "archive.html");
+  writeFileSync(path, readFileSync(path, "utf8").replace("</body>", `${plant}</body>`));
+  const requests: string[] = [];
+  page.on("request", (r) => requests.push(r.url()));
+
+  const archiveUrl = `${s.url}archive/${p.id}/original`;
+  const res = await page.goto(archiveUrl);
+  expect(res!.headers()["content-security-policy"]).toBe(EXACT_CSP);
+  await expect(page.locator("#planted-form")).toHaveCount(1);
+  // sandboxed: an opaque origin, not the server's
+  expect(await page.evaluate(() => self.origin)).toBe("null");
+  // base-uri 'none': the planted <base> is ignored, a relative link resolves against the archive
+  expect(await page.evaluate(() => document.baseURI)).toBe(archiveUrl);
+  expect(await page.locator("#planted-link").evaluate((a) => (a as HTMLAnchorElement).href)).toBe(`${s.url}archive/${p.id}/next.html`);
+  // form-action 'none' and no allow-forms: the submit goes nowhere
+  await page.locator("#planted-submit").click();
+  await page.waitForTimeout(500);
+  expect(page.url()).toBe(archiveUrl);
+  expect(requests.filter((u) => u.includes("planted-"))).toEqual([]);
 });
 
 test("re-capture saves the page again as its next version", async ({ page }) => {
