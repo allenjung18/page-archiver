@@ -78,10 +78,14 @@ export function toFtsQuery(query: string): string {
     if (!/[\p{L}\p{N}]/u.test(bare)) continue;
     parts.push(`"${bare.replace(/"/g, '""')}"${prefix ? "*" : ""}`);
   }
-  // an operator needs a term on each side
-  while (parts.length && /^(OR|AND|NOT)$/.test(parts[0]!)) parts.shift();
-  while (parts.length && /^(OR|AND|NOT)$/.test(parts[parts.length - 1]!)) parts.pop();
-  const out = parts.filter((p, i) => !(/^(OR|AND|NOT)$/.test(p) && /^(OR|AND|NOT)$/.test(parts[i + 1] ?? "")));
+  // an operator needs a term on each side: a stray OR or AND is dropped, but a NOT dropped would
+  // search for exactly what it was meant to exclude, so it is refused
+  const operator = (p: string | undefined) => p !== undefined && /^(OR|AND|NOT)$/.test(p);
+  const strayNot = parts.some((p, i) => p === "NOT" && (!parts.slice(0, i).some((q) => !operator(q)) || operator(parts[i + 1]) || i === parts.length - 1));
+  if (strayNot) throw new QueryError(`NOT needs a word on each side: ${query}`);
+  while (parts.length && operator(parts[0])) parts.shift();
+  while (parts.length && operator(parts[parts.length - 1])) parts.pop();
+  const out = parts.filter((p, i) => !(operator(p) && operator(parts[i + 1])));
   if (!out.length) throw new QueryError(`nothing to search for in: ${query}`);
   return out.join(" ");
 }
@@ -150,7 +154,10 @@ export function searchPages(db: Database.Database, query: string, opts: SearchOp
   try {
     rows = db.prepare(sql).all(mark.open, mark.close, match, ...w.params, limitOf(opts)) as typeof rows;
   } catch (err) {
-    if (opts.raw && /fts5|syntax|no such column/i.test((err as Error).message)) throw new QueryError(`not an FTS5 query: ${query} (${(err as Error).message})`);
+    // the query is the only user input in the statement: with --raw, any SQL error it raises (a
+    // syntax error, an unterminated string, "unknown special query") is the query's; a busy or
+    // corrupt database is not
+    if (opts.raw && (err as { code?: string }).code === "SQLITE_ERROR") throw new QueryError(`not an FTS5 query: ${query} (${(err as Error).message})`);
     throw err;
   }
   return rows.map(toRecord);

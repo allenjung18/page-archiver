@@ -6,7 +6,7 @@ import { ARCHIVE_FILE, importHtml, META_FILE, type CaptureOptions, type PageMeta
 import Database from "better-sqlite3";
 import { DB_FILE } from "./layout.ts";
 import { AlreadySavedError, openLibrary, type Library } from "./library.ts";
-import { QueryError } from "./search.ts";
+import { QueryError, toFtsQuery } from "./search.ts";
 
 /** A SingleFile-style save of a short article. */
 function save(opts: { url: string; title: string; site?: string; body: string; savedAt: string }): string {
@@ -97,6 +97,22 @@ describe("search", () => {
     }
     expect(lib.search("keeper's").map((h) => h.title)).toEqual(["The Fog Bell"]);
     expect(() => lib.search("NEAR(", { raw: true })).toThrow(QueryError);
+  });
+
+  it("refuses a NOT with no word before or after it, rather than search for what it would exclude", () => {
+    for (const q of ["NOT zanzibarite", "zanzibarite NOT", "kelp NOT OR zanzibarite"]) {
+      expect(() => toFtsQuery(q), q).toThrow(QueryError);
+      expect(() => lib.search(q), q).toThrow(/^NOT needs a word on each side: /);
+    }
+    expect(lib.search("harbour NOT zanzibarite").map((h) => h.title).sort(), "NOT between two words still works").toEqual(["The Fog Bell", "Tides of the Inner Basin"]);
+    // a leading or trailing OR or AND only widens or narrows nothing, and is still dropped
+    expect(toFtsQuery("OR kelp AND")).toBe(`"kelp"`);
+  });
+
+  it("makes every malformed --raw query a query error, not an operational failure", () => {
+    for (const q of ['"abc', "*", "NEAR(a b, x)", "NEAR(", "title:", "a AND"]) {
+      expect(() => lib.search(q, { raw: true }), q).toThrow(QueryError);
+    }
   });
 
   it("filters by site, tag and date", () => {
