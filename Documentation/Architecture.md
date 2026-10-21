@@ -169,7 +169,9 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   no response while the page was saved (one used only on `:hover`, a branch the page did not take,
   a host that did not answer, a request still pending when the recording stopped), or whose
   response is not an image by `imageMime` (an SVG served as `text/html`, which the page did not
-  draw either), stays a live URL, and an archive opened from
+  draw either; a cross-origin image served as `text/html` or `application/json` with
+  `X-Content-Type-Options: nosniff`, whose body Chromium's ORB blocks, so the recorder holds no
+  bytes for it), stays a live URL, and an archive opened from
   disk with no CSP fetches it if that value ever applies; served by the library, the CSP refuses it.
 - `img src` (with `srcset`, `sizes`, `loading` removed), `input type=image`, `video poster`,
   SVG `<image>`/`<feImage>` `href`, and `background` become `data:` URIs (`inlineAttr`); one that
@@ -179,8 +181,9 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   loaded, with one kind of exception: a string a substitution may bring into an `image-set()`
   (a custom property's, a fallback's, an `if()` branch's or a custom function's) stays live when
   it got no response while the page was saved, when its response is not an image by its type or
-  its raster signature (an SVG served as `text/html`, which the page did not draw), or, in an
-  extension save, when the page's resource timing did not hold it (past 250 entries, or
+  its raster signature (an SVG served as `text/html`, which the page did not draw, or a
+  cross-origin `nosniff` response served as `text/html` or `application/json`, which Chromium
+  blocks), or, in an extension save, when the page's resource timing did not hold it (past 250 entries, or
   cleared by the page), above.
   That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes, an SVG `cursor` and
   the values an SVG `<set>` or `<animate>` writes into any of those URL attributes too (below), and for

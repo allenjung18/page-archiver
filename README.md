@@ -80,9 +80,12 @@ only on `:hover`, a branch the page did not take, or a host that did not answer,
 nothing else tells it from a font name or `content` text. A string the browser did fetch is
 inlined when its response is an image: by its declared type, or by its bytes when that type is
 generic or not an image's, so a PNG, JPEG, GIF, WebP, AVIF or icon served as `text/html` or
-`application/json` is inlined as the browser drew it. One whose bytes are not such an image is kept
-as written (an SVG served as `text/html`, which the browser does not draw either, is asked for
-again). The Chrome extension learns what the page loaded
+`application/json` is inlined as the browser drew it. A string whose response is not an image by
+either test is kept as written, and an archive opened from disk asks for it again: an SVG served
+under a type that is neither generic nor `image/svg+xml` (the browser does not draw it either), or
+an image served from another site as `text/html` or `application/json` with
+`X-Content-Type-Options: nosniff`, which Chromium blocks, so the save gets no bytes for it. The
+Chrome extension learns what the page loaded
 from the browser's resource timing, which keeps 250 entries unless the page enlarges it, and which
 a page can clear, so past that, or once a page clears it, such a string naming an image the page
 did load may be kept as written as well. Opened from disk, the archive fetches a kept URL if that
