@@ -31,10 +31,11 @@ holds the defaults. `playwright.config.ts` starts it as the `webServer` and neve
 running one (`reuseExistingServer: false`), so a server from another checkout cannot serve its
 fixtures here. `npm run fixtures` starts it by hand.
 
-One page per hard case of a capture, in `fixtures/pages/`: adopted sheets, canvas, a cookie
-wall, CSS-in-JS, stylesheets written as `data:` URLs and one that does not parse
+One page per hard case of a capture, in `fixtures/pages/`: adopted sheets, an `attributionsrc`
+attribution request (`attribution-src`), canvas, a cookie wall, CSS-in-JS, stylesheets written as `data:` URLs and one that does not parse
 (`data-sheets`), form state, nested same- and cross-origin iframes, `srcdoc` frames nested past
-the depth cap (`deep-frames`), an `@import` chain, lazy images,
+the depth cap (`deep-frames`), an `@import` chain, an `@import` written with CSS escapes
+(`escaped-import`), lazy images,
 external references (`<object>`, `<embed>` and SVG `<use>` of a sprite file, in
 `fixtures/pages/sprites/`), SVG effects and paints from another file, an SVG `cursor` image and
 `image-set()` strings (`svg-effects`), link hints (fetch hints and touch icons), video and audio, a news article, a plain article,
@@ -59,12 +60,14 @@ All in Chromium at `VIEWPORT` (1280x900, scale 1), `retries: 0` (`playwright.con
   and must still make zero requests. `LIVE_BROKEN` (`live.ts`) names the images a fixture is
   built not to load; any other broken image on the live page fails it.
 - **`openOffline` (`offline.ts`), the offline assertion** shared by every layer: the archive is
-  served at `ARCHIVE_URL` (an `.invalid` host) in an offline context, a route aborts every
+  served at `ARCHIVE_URL` (a `.localhost` host, so a secure context, as a file opened from disk
+  is) in an offline context, a route aborts every
   request but the document, the document carries `ARCHIVE_CSP`, and every
   `securitypolicyviolation` event is collected. Before its full-page screenshot it waits for
   fonts and decodes every image, so an image the archive has is never photographed blank.
 - **`offline-harness.spec.ts`** proves that harness can see what the offline spec asserts is
-  absent: a network request, a CSP violation, a script.
+  absent: a network request, a CSP violation, a script, and a request Chromium makes only from a
+  secure context.
 - **`cli.spec.ts`**: `pa save <url> -o <file>` writes the archive.
 - **`extras.spec.ts`**: `pa save -d <dir>` writes the archive, the reader copy, MHTML, PNG, PDF
   and a `meta.json` valid against `META_SCHEMA`; the reader and MHTML copies open offline.

@@ -184,7 +184,9 @@ quirks-mode page (`CssContext.quirks`, from the archive's own doctype) applies a
 any type, so there every one is inlined. An `@import` or `url()` that cannot be
 had is set aside (above). CSS that does not parse keeps its text with `url()`s inlined, every
 `@import` in it set aside as a comment (`setImportsAside`, which reads past comments and
-strings), and a warning.
+strings), and a warning. An at-rule's name is read as Chromium reads it, its CSS escapes decoded
+(`identAt`): `@\69mport`, which postcss cannot parse, is set aside, and `@i\6dport`, which postcss
+reads as an at-rule `i`, is renamed `import` (`unescapeImportName`) and inlined as any `@import`.
 
 Fonts (`inline/fonts.ts`): `createFontFilter` keeps an `@font-face` rule only when the page's
 `FontFaceSet` loaded that face (a rule the set does not know is kept); `pruneFontSrc` inlines
@@ -199,7 +201,8 @@ common image and font signatures when it is missing or generic (`sniffMime`, `ef
 are), `<meta http-equiv>` in `REMOVED_META_HTTP_EQUIV` (the page's CSP, refresh), and `<link>`s
 with a `rel` in `REMOVED_LINK_RELS` (fetch hints, the manifest, `serviceworker`, and the
 `compression-dictionary`/`dictionary` links Chromium fetches on load). From every element it
-strips `on*` attributes, `REMOVED_ATTRIBUTES` (`ping`), any `URL_ATTRIBUTES` value that is a
+strips `on*` attributes, `REMOVED_ATTRIBUTES` (`ping`, and `attributionsrc`, an attribution
+request a file opened from disk would send), any `URL_ATTRIBUTES` value that is a
 script URL (`isScriptUrl`), a `data:` document in a frame, embed or object
 (`DOCUMENT_URL_ATTRIBUTES`), and SVG animations that would write a script URL; `srcdoc` is
 sanitized recursively. `sanitizeHtml` is the same over a string.
