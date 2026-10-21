@@ -288,7 +288,7 @@ comment (`readSingleFileHeader`) or, for a file page-archiver made itself, from 
 port the server bound (`127.0.0.1:<port>`, from the listener's `AddressInfo`), so a page at a
 public name that resolves to 127.0.0.1 (`127.0.0.1.nip.io`, DNS rebinding) cannot read the API or
 the token page; `localhost:<port>` is refused too. Some spellings never reach it: `@hono/node-server`
-answers `127.1:<port>` at a port above 59999 with 400 ("Invalid host header"). Every write needs `Authorization: Bearer <token>`. The reader UI is
+answers `127.1:<port>` at a port below 1000 or above 59999 with 400 ("Invalid host header"). Every write needs `Authorization: Bearer <token>`. The reader UI is
 served under `UI_CSP`. Archives are served by `archiveResponse` (`serve-archive.ts`) with
 `ARCHIVE_HEADERS` (`ARCHIVE_CSP`, `nosniff`, `no-referrer`, `no-store`) at
 `/archive/<id>/original|reader` (`VIEWS`), and the UI shows them only in an

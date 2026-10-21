@@ -276,14 +276,15 @@ describe("segments", () => {
 
 // The Host `127.1:<port>` is refused at every port, but not always by the app. @hono/node-server
 // (2.1.4) vets the Host header before the app sees it: its fast path (`reValidHost`) takes a port
-// only up to 59999. Above that it parses the Host with `new URL`, which rewrites `127.1` to
+// only from 1000 to 59999. Outside that it parses the Host with `new URL`, which rewrites `127.1` to
 // `127.0.0.1`, and answers 400 "Invalid host header" for the mismatch, so the app's own 403 never
 // runs. Port 0 lets the OS choose, and macOS chooses from 49152-65535, so a test that wanted 403
 // passed on CI's ubuntu runner and failed on a Mac whose ports had climbed past 60000. So each
-// case below binds a port from its own range, and both paths run on every machine.
+// case below binds a port from its own range, and both paths run on every machine. The low range
+// starts at 50000, clear of the e2e fixture servers (47310, 47311) and `pa serve` (47320).
 const REFUSED = [400, 403];
 const PORT_CASES = [
-  { name: "below 60000", from: 40000, to: 59999, shortForm: [403] },
+  { name: "below 60000", from: 50000, to: 59999, shortForm: [403] },
   { name: "60000 and above", from: 60000, to: 65535, shortForm: REFUSED },
   { name: "any free port (0)", from: 0, to: 0, shortForm: REFUSED },
 ];
@@ -329,7 +330,7 @@ describe("startServer", () => {
       expect(await status(`127.0.0.1.nip.io:${server.port}`)).toBe(403);
       expect(await status(`rebound.example:${server.port}`)).toBe(403);
       expect(await status(`localhost:${server.port}`)).toBe(403);
-      // 403 from the app, or 400 from @hono/node-server above port 59999 (see PORT_CASES)
+      // 403 from the app, or 400 from @hono/node-server at a port of 60000 or above (see PORT_CASES)
       expect(shortForm).toContain(await status(`127.1:${server.port}`));
       expect(await status(`127.0.0.1`)).toBe(403);
     } finally {
