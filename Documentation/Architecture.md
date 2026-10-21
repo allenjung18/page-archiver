@@ -120,14 +120,18 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   stylesheet is dropped with a warning; a sheet that cannot be had stays a `<link>` with no
   `href`, its absolute URL set aside (below).
 - `<style>` text and `style` attributes have their `url()`s, and the string arguments of
-  `image-set()` and `-webkit-image-set()`, inlined (`inlineUrls`).
+  `image-set()` and `-webkit-image-set()`, inlined (`inlineUrls`). A function's name is read as
+  Chromium reads it, its CSS escapes decoded (`urlTokens`, `imageSetStrings`): `\75rl(`, `u\72l(`
+  and `\55 RL(` are `url(`s and `image-s\65t(` is an `image-set(`, in a sheet, a `style`
+  attribute, a font's `src` list and an SVG attribute alike.
 - `img src` (with `srcset`, `sizes`, `loading` removed), `input type=image`, `video poster`,
   SVG `<image>`/`<feImage>` `href`, and `background` become `data:` URIs (`inlineAttr`); one that
   cannot be had is set aside and reported.
 - **Set aside** (D-516): a resource the capture cannot have (an HTTP error, a cap) never stays a
   live reference, so no archive asks the network for anything, even opened from disk with no CSP.
-  That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes and an SVG `cursor` too (below): each
-  one's file is inlined or set aside, never left as a URL. An uncaptured frame's `srcdoc` is set
+  That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes and an SVG `cursor` too (below), and for
+  a `url()` or `image-set()` whose name is written with CSS escapes: each one's file is inlined or
+  set aside, never left as a URL. An uncaptured frame's `srcdoc` is set
   aside whole (Assemble, above).
   An attribute moves to `UNFETCHED_ATTRIBUTE_PREFIX` + its name (`data-page-archiver-unfetched-src`)
   with its absolute URL; a `url()` becomes `UNFETCHED_URL` (`url("data:,")`, which fails to load
@@ -187,6 +191,9 @@ had is set aside (above). CSS that does not parse keeps its text with `url()`s i
 strings), and a warning. An at-rule's name is read as Chromium reads it, its CSS escapes decoded
 (`identAt`): `@\69mport`, which postcss cannot parse, is set aside, and `@i\6dport`, which postcss
 reads as an at-rule `i`, is renamed `import` (`unescapeImportName`) and inlined as any `@import`.
+A function's name is read the same way, whole (`myurl(` is not a `url(`) and decoded (`\75rl(` is),
+wherever a `url()` is looked for: a declaration, an `@import`, a font's `src` list, CSS that does
+not parse.
 
 Fonts (`inline/fonts.ts`): `createFontFilter` keeps an `@font-face` rule only when the page's
 `FontFaceSet` loaded that face (a rule the set does not know is kept); `pruneFontSrc` inlines
