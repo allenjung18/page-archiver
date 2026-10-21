@@ -315,8 +315,21 @@ function spriteScope(tree: ParentNode, state: SpriteState): { defs: Element; cop
   return scope;
 }
 
-/** `#id` references in a value: an href that is one, and every url(#id). */
-const URL_ID_REF = /url\(\s*(["']?)#([^"')\s]+)\1\s*\)/gi;
+/**
+ * Every url(#id) in a value (its name may be written with CSS escapes, "u\72l(#id)"), each
+ * pointed at the id `rename` returns for it.
+ */
+function renameUrlIdRefs(value: string, rename: (id: string) => string): string {
+  let out = "";
+  let last = 0;
+  for (const r of urlTokens(value)) {
+    const raw = r.raw.trim();
+    if (raw.length < 2 || !raw.startsWith("#")) continue;
+    out += value.slice(last, r.index) + localRef(rename(raw.slice(1)));
+    last = r.index + r.length;
+  }
+  return out + value.slice(last);
+}
 
 function fragmentId(hash: string): string {
   try {
@@ -348,19 +361,19 @@ function copyFromSprite(sprite: Sprite & { byId: Map<string, Element> }, id: str
           const ref = fragmentId(a.value.trim().slice(1));
           queue.push(ref);
           a.value = `#${spriteId(sprite.n, ref)}`;
-        } else if (/url\(/i.test(a.value)) {
-          a.value = a.value.replace(URL_ID_REF, (_, q: string, ref: string) => {
+        } else if (hasCssRefs(a.value)) {
+          a.value = renameUrlIdRefs(a.value, (ref) => {
             queue.push(ref);
-            return `url(${q}#${spriteId(sprite.n, ref)}${q})`;
+            return spriteId(sprite.n, ref);
           });
         }
       }
       if (e.tagName === "style") {
         setStyleText(
           e,
-          textOf(e).replace(URL_ID_REF, (_, q: string, ref: string) => {
+          renameUrlIdRefs(textOf(e), (ref) => {
             queue.push(ref);
-            return `url(${q}#${spriteId(sprite.n, ref)}${q})`;
+            return spriteId(sprite.n, ref);
           }),
         );
       }

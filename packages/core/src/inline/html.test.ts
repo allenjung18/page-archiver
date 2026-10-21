@@ -604,4 +604,13 @@ describe("inlineDocument: a url() or image-set() whose name is written with CSS 
     expect(getAttr(r, "cursor")).toBe(`url("${PNG_URI}") 2 2, pointer`);
     expect(out, "no address left that the archive would fetch").not.toMatch(/cdn\.test|a\.png/);
   });
+
+  it("renames an escaped url(#id) inside a copied sprite element, and copies what it names", async () => {
+    const sprite = String.raw`<svg xmlns="http://www.w3.org/2000/svg"><linearGradient id="grad"/><linearGradient id="dots"/>` +
+      String.raw`<symbol id="s"><style>.k{fill:\75rl(#dots)}</style><rect fill="u\72l(#grad)"/></symbol></svg>`;
+    const { out } = await run(`<svg><use href="http://cdn.test/s.svg#s"/></svg>`, { "http://cdn.test/s.svg": { mime: SVG, body: sprite } });
+    expect(out).toContain(`<rect fill="url(#${SPRITE_ID_PREFIX}0-grad)">`);
+    expect(out).toContain(`.k{fill:url(#${SPRITE_ID_PREFIX}0-dots)}`);
+    for (const id of ["grad", "dots"]) expect(out.split(`id="${SPRITE_ID_PREFIX}0-${id}"`), id).toHaveLength(2);
+  });
 });
