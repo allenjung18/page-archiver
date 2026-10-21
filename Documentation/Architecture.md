@@ -258,7 +258,15 @@ served under `UI_CSP`. Archives are served by `archiveResponse` (`serve-archive.
 `content.ts`) into every frame; `createContentApi` (`content.ts`) marks child frames
 (`FRAME_ATTRIBUTE`) and snapshots each frame; `buildTree` (`tree.ts`) rebuilds the frame tree;
 `fetchResource` fetches each resource from the service worker (host permission for every site,
-so no CORS, with the reader's cookies); core's `assemble` builds the archive, with
+so no CORS), with the reader's cookies only for the page's own site (`credentialsFor`,
+`hosts.ts`: the same registrable domain, from the public suffix list in `tldts`). A page could
+otherwise name a resource on the reader's machine or network and have it inlined: `refusal`
+refuses, before the fetch and again after a redirect, a loopback, private-network, link-local
+or unspecified address (`hostClass`: 127/8, `localhost`, ::1, 10/8, 172.16/12, 192.168/16,
+fc00::/7, 169.254/16, fe80::/10, 0/8, ::, and IPv4-mapped forms) unless it is the page's own
+host, any port (a page served locally keeps its assets on another port), and the library
+server (`serverUrl`) by any loopback name unless the page is the server's own; the resolver
+sets a refused resource aside with a warning ending `; set aside`. core's `assemble` builds the archive, with
 `node:crypto` replaced by a plain SHA-256 (`shims/node-crypto.ts`, `sha256.ts`). `deliver`
 (`server.ts`) posts it to `pa serve` at the address in the popup (`DEFAULT_SERVER`), pairing by
 reading the token from the UI page (`tokenFromPage`) and waiting at most `ANSWER_TIMEOUT_MS`
@@ -273,4 +281,9 @@ The extension makes no poster frames: a video saved from Chrome keeps its own po
 - A resource the site will not give again (an HTTP error, a cap) is not in the archive: it is
   set aside, so an archive opened online does not show it either. The warning and the set-aside
   attribute or comment name the URL.
+- The extension refuses private hosts by the URL, not the address: a public host name that
+  resolves to a private address (`127.0.0.1.nip.io`, DNS rebinding) is fetched, since the
+  service worker never sees the address, and `pa serve` does not check the `Host` header. A
+  resource on another site that needs the reader's cookies is fetched without them, so it may be
+  refused and set aside.
 - The reader copy needs Readability to find an article; a page without one gets none.

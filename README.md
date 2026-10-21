@@ -189,7 +189,8 @@ With `pa serve` running, click the extension's button on any http(s) page, add t
 like and press **Save**, or right-click the page and choose **Save page to archive**. The
 extension serializes the page as your browser has it (signed in, past a paywall you pay for,
 after you have scrolled or opened what you wanted) in every frame, fetches its styles, images
-and fonts from the extension's service worker with your cookies, builds the same
+and fonts from the extension's service worker (with your cookies for the page's own site only,
+and never from your machine or local network unless the page itself is there), builds the same
 self-contained archive `pa save` does, and posts it to the server, which sanitizes it again and
 adds it to the library. The popup then says **Saved** and **Open in library** opens the reader.
 The first save pairs with the server by reading the write token from its page; the server
