@@ -8,7 +8,7 @@ import { utf8Length } from "./bytes.ts";
 import { allElements, getAttr, parseDocument, removeAttr, serializeDocument, setAttr, type Document } from "./dom.ts";
 import { FRAME_ATTRIBUTE, type FrameCapture } from "./frames.ts";
 import { createFontFilter } from "./inline/fonts.ts";
-import { inlineDocument } from "./inline/html.ts";
+import { inlineDocument, UNFETCHED_ATTRIBUTE_PREFIX } from "./inline/html.ts";
 import type { Resolver } from "./resources.ts";
 import { sanitizeDocument, type SanitizeReport } from "./sanitize.ts";
 import { canonicalUrl, finalizeStamp, stamp } from "./stamp.ts";
@@ -52,11 +52,21 @@ export async function buildFrame(capture: FrameCapture, ctx: BuildContext): Prom
       ctx.built.frames++;
       continue;
     }
+    // Not captured: left empty. Its own srcdoc (sanitized, never inlined) would load its resources
+    // from the live site when the file is opened from disk, so it is set aside, kept in
+    // `data-page-archiver-unfetched-srcdoc` where nothing reads it.
     const src = getAttr(el, "src");
-    if (src !== null && src.trim() && !/^about:/i.test(src.trim())) {
-      // a child that is too deep or failed (null) already has its warning; a captured <frame> does not
-      if (child !== null) ctx.warn(`${el.tagName} ${src}: ${el.tagName === "frame" ? "<frame> is not supported" : "not loaded by the page"}; left empty`);
-      removeAttr(el, "src");
+    const live = src !== null && src.trim() !== "" && !/^about:/i.test(src.trim());
+    const srcdoc = el.tagName === "iframe" ? getAttr(el, "srcdoc") : null;
+    if (srcdoc !== null) {
+      removeAttr(el, "srcdoc");
+      setAttr(el, UNFETCHED_ATTRIBUTE_PREFIX + "srcdoc", srcdoc);
+    }
+    if (live) removeAttr(el, "src");
+    // a child that is too deep or failed (null) already has its warning; a captured <frame> does not
+    if (child !== null && (live || srcdoc !== null)) {
+      const reason = el.tagName === "frame" ? "<frame> is not supported" : live ? "not loaded by the page" : "not captured";
+      ctx.warn(`${el.tagName} ${live ? src : "srcdoc"}: ${reason}; left empty${srcdoc !== null ? ", its srcdoc set aside" : ""}`);
     }
   }
   return doc;

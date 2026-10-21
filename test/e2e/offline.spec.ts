@@ -227,6 +227,17 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html).not.toMatch(/\/img\/(hero|figure|paper)\.png/);
     },
   },
+  "deep-frames": {
+    // the sixth frame is past MAX_FRAME_DEPTH: not captured, and left empty
+    warnings: [/^frame about:srcdoc: nested deeper than 5 frames; left empty$/],
+    withoutCsp: true,
+    check(html, archive) {
+      expect(archive.stats.frames).toBe(5);
+      // its srcdoc, which names a live image, is set aside rather than left to load from disk
+      expect(count(html, "data-page-archiver-unfetched-srcdoc=")).toBe(1);
+      expect(html, "no srcdoc holds the image's document").not.toMatch(/\ssrcdoc=(?:"|&(?:amp;)*quot;)<html><head><\/head><body><img /);
+    },
+  },
   "form-state": {
     check(html) {
       expect(html).toMatch(/<input id="name" type="text" value="Ada Lovelace">/);

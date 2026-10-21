@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frames nested past the depth cap</title>
+<!-- Six srcdoc frames, each inside the last. The capture snapshots five (MAX_FRAME_DEPTH); the
+     sixth is not captured, and its srcdoc names a live image, a 1x1 pixel the way a tracker's is.
+     Left in the archive, that srcdoc would fetch the image when the file is opened from disk with
+     no CSP to refuse it, so it is set aside and the frame is left empty, as its warning says. -->
+<style>
+  body { margin: 0; font: 16px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #222; background: #fff; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px; }
+  iframe { display: block; width: 100%; height: 320px; border: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Frames nested past the depth cap</h1>
+  <img src="{{ASSETS}}/img/hero.png" width="640" height="120" alt="A blue gradient">
+  <p>Each box below is a frame inside the one before it.</p>
+  <iframe id="nest" title="nest"></iframe>
+</main>
+<script>
+  // the innermost document, then five frames around it: the outer one is frame 1, this is frame 6
+  let doc = `<img src="{{ASSETS}}/img/figure.png" width="1" height="1" alt="">`;
+  for (let level = 5; level >= 1; level--) {
+    const tint = ["#fdf1e6", "#e9f3ec", "#e6eefd", "#f6e6fd", "#fdfde6"][level - 1];
+    const inner = doc.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+    doc = `<style>body{margin:0;padding:8px 12px;font:14px sans-serif;background:${tint}}p{margin:0}iframe{display:block;width:100%;height:${280 - level * 40}px;border:0}</style><p>Frame ${level}</p><iframe srcdoc="${inner}"></iframe>`;
+  }
+  document.getElementById("nest").srcdoc = doc;
+</script>
+</body>
+</html>

@@ -59,6 +59,28 @@ describe("buildFrame: child frames", () => {
     expect(html).not.toContain(M);
   });
 
+  it("sets aside the srcdoc of an iframe that was not captured, so its resources are not fetched from disk", async () => {
+    const top = node(
+      `<!doctype html><body><iframe ${M}="f1" srcdoc="<img src='http://a.test/deep.png'>"></iframe>` +
+        `<iframe srcdoc="<img src='http://a.test/lost.png'>"></iframe>` +
+        `<iframe src="http://a.test/never.html" srcdoc="<img src='http://a.test/both.png'>"></iframe></body>`,
+      "http://a.test/",
+      0,
+      [["f1", null]],
+    );
+    const { ctx, warnings } = context();
+    const html = serializeDocument(await buildFrame(top, ctx));
+    // too deep (null): snapshotFrames already warned "left empty"; the other two warn here
+    expect(warnings).toEqual([
+      "iframe srcdoc: not captured; left empty, its srcdoc set aside",
+      "iframe http://a.test/never.html: not loaded by the page; left empty, its srcdoc set aside",
+    ]);
+    expect(html).not.toMatch(/\ssrcdoc=/);
+    expect(html).not.toMatch(/<iframe[^>]*\ssrc=/);
+    expect(html.split("data-page-archiver-unfetched-srcdoc=").length - 1).toBe(3);
+    expect(html).toContain(`<iframe data-page-archiver-unfetched-srcdoc="<html><head></head><body><img src=&quot;http://a.test/deep.png&quot;></body></html>"></iframe>`);
+  });
+
   it("does not leave the frame marker on an <object> or <embed>", async () => {
     const top = node(`<!doctype html><body><object ${M}="f1" type="image/svg+xml"></object><embed ${M}="f2"></body>`, "http://a.test/", 0, [
       ["f1", node(`<!doctype html><body>o</body>`, "http://a.test/o.svg", 1)],

@@ -74,6 +74,11 @@ at run time so the extension's service worker can bundle it (`packages/core/src/
 7. **Assemble.** `assemble` → `buildFrame` (`assemble.ts`) for each frame: `sanitizeDocument`,
    then `inlineDocument` (below), then each captured child frame built the same way and written
    into its `<iframe>` as `srcdoc`. A `<frame>` in a frameset is left empty with a warning.
+   An `<iframe>` that was not captured (nested deeper than `MAX_FRAME_DEPTH`, not located, or
+   never loaded) is left empty: its `src` is removed, and its own `srcdoc`, which is sanitized
+   but never inlined, is set aside into `data-page-archiver-unfetched-srcdoc`, so its images and
+   sheets are not fetched from the live site when the file is opened from disk. Its warning says
+   `left empty` (`, its srcdoc set aside` when it had one).
    Then `sizeWarning` (over `LARGE_ARCHIVE_BYTES`, 50 MB), `summarizeWarnings`, `stamp` and
    `finalizeStamp` (`stamp.ts`).
 8. **Extras** (when asked; all of them for a folder, `resolveExtras`): `captureMhtml`
@@ -121,7 +126,8 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
 - **Set aside** (D-516): a resource the capture cannot have (an HTTP error, a cap) never stays a
   live reference, so no archive asks the network for anything, even opened from disk with no CSP.
   That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes and an SVG `cursor` too (below): each
-  one's file is inlined or set aside, never left as a URL.
+  one's file is inlined or set aside, never left as a URL. An uncaptured frame's `srcdoc` is set
+  aside whole (Assemble, above).
   An attribute moves to `UNFETCHED_ATTRIBUTE_PREFIX` + its name (`data-page-archiver-unfetched-src`)
   with its absolute URL; a `url()` becomes `UNFETCHED_URL` (`url("data:,")`, which fails to load
   as the fetch did) followed by a `/* page-archiver unfetched: <url> */` comment (`unfetchedNote`),
@@ -261,7 +267,8 @@ The extension makes no poster frames: a video saved from Chrome keeps its own po
 ## Limits, as built
 
 - Closed shadow roots, `<frame>`s in a frameset, frames deeper than five, tainted canvases and
-  video or audio files are not archived; each one is a warning.
+  video or audio files are not archived; each one is a warning. A frame deeper than five is left
+  empty, its `srcdoc`, if it had one, kept in `data-page-archiver-unfetched-srcdoc`.
 - A resource the site will not give again (an HTTP error, a cap) is not in the archive: it is
   set aside, so an archive opened online does not show it either. The warning and the set-aside
   attribute or comment name the URL.
