@@ -164,6 +164,18 @@ pa import <file.html>... [--url <url>] [--tag <tag>]...
   comment (`--url` when the file has none), scripts and handlers removed, the file stamped,
   and a reader copy made. Importing the same file twice is refused.
 
+Exit status, for every command: 0 when it did what was asked, 1 when it failed at run time
+(a page that could not be loaded, an `import` where any file failed, a `search` with no hit),
+2 for a usage error (an unknown command, a flag that does not fit, an unknown or ambiguous
+page id, a search query FTS5 refuses). `pa help`, `--help` and `-h` print the usage text.
+`pa save` takes at most one of `-o`, `-d` and `--library`; `--tag` and the `--no-*` extras are
+refused with `-o`. A page that answers HTTP 404 or 500 is still saved, with a `warning:` line
+(a warning is not a failure). `pa serve --library <dir>` serves another library, `--port 0`
+picks any free port, and a port in use fails with `port N is in use: pass another with --port`.
+Environment: `PA_LIBRARY` (the library folder; set but empty it means `~/Archive/pages`, while
+`--library ""` is refused), `PA_NO_OPEN=1` (no browser), and `PAGES_PORT` / `ASSETS_PORT` for the
+tests' fixture server. Opening a library creates its folder and `library.db`.
+
 ## Reading the library in the browser
 
 ```
@@ -194,7 +206,8 @@ policy itself allows no script).
 
 The API (JSON) under `/api`: `GET pages`, `GET search?q=`, `GET facets`, `GET pages/<id>`
 take the list filters as query parameters (`site`, `tag`, `since`, `until`, `all=1`,
-`limit`). The writes, `POST save` (`{"url", "tags"}` captures the URL;
+`limit`; `all=true` works as `all=1`). `GET /assets/<file>` serves the UI's bundle,
+and `/archive/<id>/<view>` answers HEAD as well as GET. The writes, `POST save` (`{"url", "tags"}` captures the URL;
 `{"url", "html", "tags"}` adds an archive made elsewhere, the extension's, sanitized again,
 and answers 409 when those bytes are in the library already), `POST pages/<id>/recapture`,
 `POST pages/<id>/tags` (`{"add", "remove"}`) and `DELETE pages/<id>`, need
@@ -209,7 +222,7 @@ Chrome: `chrome://extensions`, turn on **Developer mode**, **Load unpacked**, ch
 folder.
 
 With `pa serve` running, click the extension's button on any http(s) page, add tags if you
-like and press **Save**, or right-click the page and choose **Save page to archive**. The
+like and press **Save page**, or right-click the page and choose **Save page to archive**. The
 extension serializes the page as your browser has it (signed in, past a paywall you pay for,
 after you have scrolled or opened what you wanted) in every frame, fetches its styles, images
 and fonts from the extension's service worker (with your cookies for the page's own site only,
@@ -220,7 +233,7 @@ The first save pairs with the server by reading the write token from its page; t
 address is a setting in the popup (default `http://127.0.0.1:47320/`).
 
 When the server is not running, the extension downloads the archive instead, as
-`page-archiver/<site-title>-<time>.html` in the download folder; `pa import` adds it to the
+`page-archiver/<host>-<title>-<time>.html` in the download folder; `pa import` adds it to the
 library later. The extension never sends a page anywhere but the server address you set.
 
 ## Layout

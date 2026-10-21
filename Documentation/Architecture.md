@@ -185,7 +185,7 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
 - `img src` (with `srcset`, `sizes`, `loading` removed), `input type=image`, `video poster`,
   SVG `<image>`/`<feImage>` `href`, and `background` become `data:` URIs (`inlineAttr`); one that
   cannot be had is set aside and reported.
-- **Set aside** (D-516): a resource the capture cannot have (an HTTP error, a cap) never stays a
+- **Set aside**: a resource the capture cannot have (an HTTP error, a cap) never stays a
   live reference, so an archive opened from disk with no CSP asks the network for nothing the page
   loaded, with one kind of exception: a string a substitution may bring into an `image-set()`
   (a custom property's, a fallback's, an `if()` branch's or a custom function's) stays live when

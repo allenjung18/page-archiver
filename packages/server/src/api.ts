@@ -10,8 +10,9 @@
 //   POST   /api/pages/:id/recapture  capture the page's URL again, as its next version  (token)
 //   POST   /api/pages/:id/tags     { add?, remove? }                                      (token)
 //   DELETE /api/pages/:id          delete one capture                                     (token)
-//   GET    /archive/:id/original | /archive/:id/reader   the page under ARCHIVE_CSP
+//   GET|HEAD /archive/:id/original | /archive/:id/reader   the page under ARCHIVE_CSP
 //   GET    /                       the reader UI (the token is written into it)
+//   GET    /assets/:file           the UI bundle
 //
 // Writes need `Authorization: Bearer <token>`, which no archived page and no other site can
 // send: archives run no script, and another origin's request with that header is preflighted
