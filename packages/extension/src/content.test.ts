@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createContentApi, FRAME_ATTRIBUTE, frameElements, MESSAGE_KEY } from "./content.ts";
 
 // <frame> elements stand in for iframes: happy-dom is set never to load a frame, and an
@@ -46,5 +46,26 @@ describe("the content script", () => {
     send({ [MESSAGE_KEY]: "good", nonce: "n1" }, parent);
     expect(api.frameId("n1")).toBe("good");
     expect(api.frameId("n2")).toBeNull();
+  });
+
+  it("snapshots a frame whose web font never finishes loading, after a bound, with a warning", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal("PageArchiverSerializer", { snapshot: () => ({ html: "<html></html>", baseUrl: "", url: "", title: "", manifest: [], fonts: [], warnings: [] }) });
+      const win = Object.assign(new EventTarget(), {
+        parent: null,
+        document: { fonts: { ready: new Promise(() => undefined) } },
+        performance: { getEntriesByType: () => [] },
+      }) as unknown as Window;
+      let report: Awaited<ReturnType<ReturnType<typeof createContentApi>["snapshot"]>> | undefined;
+      void createContentApi(win).snapshot("n1").then((r) => (report = r));
+      await vi.advanceTimersByTimeAsync(4_900);
+      expect(report, "the fonts wait is bounded, not skipped").toBeUndefined();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(report?.snap.warnings, "snapshot() still waiting on document.fonts.ready").toEqual(["web fonts not ready after 5 s; captured anyway"]);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
   });
 });

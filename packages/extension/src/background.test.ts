@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fromOwnPage, install, MENU_ID } from "./background.ts";
+import { saveTab } from "./save.ts";
 import type { Chrome } from "./chrome.ts";
 import { memoryStore } from "./testing.ts";
 
@@ -52,5 +53,26 @@ describe("the service worker", () => {
     expect(fromOwnPage(c, { id: "extid", url: "chrome-extension://extid/popup.html" })).toBe(true);
     expect(fromOwnPage(c, { id: "extid", url: "chrome-extension://extidx/popup.html" })).toBe(false);
     expect(fromOwnPage(c, { id: "extid" })).toBe(false);
+  });
+
+  it("gives up on a save that never settles, so a later click on the tab starts again", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fakeChrome();
+      const save = install(f.c, {} as never);
+      vi.mocked(saveTab).mockImplementationOnce(() => new Promise(() => undefined));
+      let first: unknown;
+      void save(4, []).then((r) => (first = r));
+      await vi.advanceTimersByTimeAsync(5 * 60_000 - 100);
+      expect(first, "the bound is five minutes, not less").toBeUndefined();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(first, "the tab's save still pending").toMatchObject({ kind: "failed", error: "the save did not finish in 5 minutes" });
+      expect(f.badges.at(-1)).toEqual({ tabId: 4, text: "!" });
+      const calls = vi.mocked(saveTab).mock.calls.length;
+      await expect(save(4, [])).resolves.toMatchObject({ kind: "saved" });
+      expect(vi.mocked(saveTab).mock.calls.length, "a later click ran a save of its own").toBe(calls + 1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { trackNetwork } from "./settle.ts";
+import type { Page } from "playwright";
+import { settle, trackNetwork, type NetworkTracker } from "./settle.ts";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -74,5 +75,27 @@ describe("trackNetwork", () => {
     net.dispose();
     em.emit("request", {});
     expect(net.inflight()).toBe(0);
+  });
+});
+
+describe("settle", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("goes ahead with a warning when a web font starts loading and never answers", async () => {
+    // the page's own globals, for the functions settle runs in it: one screen, no images, and a
+    // font whose request never ends, so document.fonts.ready never settles
+    vi.stubGlobal("window", { innerHeight: 800, scrollTo: () => undefined });
+    vi.stubGlobal("document", { documentElement: { scrollHeight: 800 }, fonts: { ready: new Promise(() => undefined) }, images: [] });
+    vi.stubGlobal("requestAnimationFrame", (f: () => void) => setTimeout(f, 16));
+    const page = { evaluate: (fn: (arg: unknown) => unknown, arg: unknown) => Promise.resolve(fn(arg)) } as unknown as Page;
+    const network: NetworkTracker = { inflight: () => 0, waitForIdle: async () => true, dispose: () => undefined };
+    let warnings: string[] | undefined;
+    void settle(page, network, { dismissDefaults: false }).then((w) => (warnings = w));
+    await vi.advanceTimersByTimeAsync(4_900);
+    expect(warnings, "the fonts wait is bounded, not skipped").toBeUndefined();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(warnings, "settle still waiting on document.fonts.ready").toEqual(["web fonts not ready after 5 s; captured anyway"]);
   });
 });

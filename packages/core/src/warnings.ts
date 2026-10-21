@@ -37,3 +37,11 @@ export function sizeWarning(bytes: number, limit = LARGE_ARCHIVE_BYTES): string 
   if (bytes <= limit) return null;
   return `the archive is ${(bytes / 1024 / 1024).toFixed(1)} MB (over ${Math.round(limit / 1024 / 1024)} MB)`;
 }
+
+/** The longest a capture waits for document.fonts.ready before it goes ahead (settle.ts, and the extension's content script). */
+export const FONTS_CAP_MS = 5_000;
+
+/** The warning for a page whose web fonts were not ready after capMs. */
+export function fontsWarning(capMs: number = FONTS_CAP_MS): string {
+  return `web fonts not ready after ${capMs / 1000} s; captured anyway`;
+}

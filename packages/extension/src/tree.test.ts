@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Snapshot } from "@page-archiver/serializer";
-import { FRAME_ATTRIBUTE as CORE_FRAME_ATTRIBUTE } from "@page-archiver/core/portable";
-import { FRAME_ATTRIBUTE } from "./content.ts";
+import { FRAME_ATTRIBUTE as CORE_FRAME_ATTRIBUTE, FONTS_CAP_MS as CORE_FONTS_CAP_MS, fontsWarning } from "@page-archiver/core/portable";
+import { FONTS_CAP_MS, FRAME_ATTRIBUTE } from "./content.ts";
 import type { FrameReport } from "./protocol.ts";
 import { buildTree } from "./tree.ts";
 
@@ -15,6 +15,11 @@ function report(html: string, url: string, id: string | null, loaded: string[] =
 describe("buildTree", () => {
   it("marks frames with the attribute core's buildFrame reads", () => {
     expect(FRAME_ATTRIBUTE).toBe(CORE_FRAME_ATTRIBUTE);
+  });
+
+  it("waits for web fonts as long as core's capture does, and says so in the same words", () => {
+    expect(FONTS_CAP_MS).toBe(CORE_FONTS_CAP_MS);
+    expect(fontsWarning(FONTS_CAP_MS)).toBe("web fonts not ready after 5 s; captured anyway");
   });
 
   it("puts each frame under the element its parent marked, two deep, and gathers every loaded URL", () => {

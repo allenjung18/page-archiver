@@ -1,14 +1,18 @@
 // Waits until the page is as complete as it is going to get: load, network idle (500 ms with
 // nothing in flight, each wait capped at 15 s so a long-poll cannot hang a capture), an optional
 // selector, consent banners dismissed, a scroll to the bottom in viewport steps so lazy images
-// and first infinite-scroll pages load, idle again, back to the top, fonts ready.
+// and first infinite-scroll pages load, idle again, back to the top, fonts ready (at most
+// FONTS_CAP_MS: a web font that starts loading after load and never answers would otherwise
+// hold the capture open for good).
 import type { Page } from "playwright";
 import { dismissConsent } from "./consent.ts";
+import { FONTS_CAP_MS, fontsWarning } from "./warnings.ts";
 
 export const IDLE_QUIET_MS = 500;
 export const IDLE_CAP_MS = 15_000;
 /** At most this many viewport steps: an infinite-scroll page never reaches the bottom. */
 export const MAX_SCROLL_STEPS = 60;
+
 
 interface RequestEvents {
   on(event: "request" | "requestfinished" | "requestfailed", fn: (r: unknown) => void): unknown;
@@ -133,12 +137,14 @@ export async function settle(page: Page, network: NetworkTracker, opts: SettleOp
   if (steps >= MAX_SCROLL_STEPS) warnings.push(`scrolled ${MAX_SCROLL_STEPS} screens and stopped (endless page?)`);
   await idle("after scrolling");
 
-  await page.evaluate(async () => {
+  const fontsReady = await page.evaluate(async (fontsCapMs) => {
     window.scrollTo(0, 0);
-    await document.fonts.ready;
+    const ready = await Promise.race([document.fonts.ready.then(() => true), new Promise<boolean>((r) => setTimeout(() => r(false), fontsCapMs))]);
     const decodes = [...document.images].map((img) => img.decode().catch(() => undefined));
     await Promise.race([Promise.all(decodes), new Promise((r) => setTimeout(r, 5_000))]);
     await new Promise((r) => requestAnimationFrame(() => r(null)));
-  });
+    return ready;
+  }, FONTS_CAP_MS);
+  if (!fontsReady) warnings.push(fontsWarning(FONTS_CAP_MS));
   return warnings;
 }

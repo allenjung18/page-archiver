@@ -8,3 +8,4 @@ export { FRAME_ATTRIBUTE, MAX_FRAME_DEPTH, type FrameCapture } from "./frames.ts
 export { createResolver, type FallbackFetch, type Resolver, type Resource } from "./resources.ts";
 export { DEFAULT_RESOURCE_CAP, DEFAULT_TOTAL_CAP } from "./recorder.ts";
 export { verifyStamp } from "./stamp.ts";
+export { FONTS_CAP_MS, fontsWarning } from "./warnings.ts";

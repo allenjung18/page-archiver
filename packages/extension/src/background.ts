@@ -8,6 +8,9 @@ declare const chrome: Chrome;
 
 export const MENU_ID = "page-archiver-save";
 
+/** A save that has not finished by then is reported as failed, and the tab may be saved again. */
+export const SAVE_TIMEOUT_MS = 5 * 60_000;
+
 const BADGE: Record<SaveResult["kind"], { text: string; color: string }> = {
   saved: { text: "✓", color: "#2f7d32" },
   downloaded: { text: "↓", color: "#8a6d00" },
@@ -21,7 +24,8 @@ export function fromOwnPage(c: Pick<Chrome, "runtime">, sender: MessageSender): 
 
 /** Wires the extension's events to saveTab; returns the save function (tests call it). */
 export function install(c: Chrome, env: Env): (tabId: number, tags: readonly string[]) => Promise<SaveResult> {
-  // one save per tab at a time: a second click while saving waits for the first's result
+  // one save per tab at a time: a second click while saving waits for the first's result, for
+  // at most SAVE_TIMEOUT_MS
   const running = new Map<number, Promise<SaveResult>>();
 
   const save = (tabId: number, tags: readonly string[]): Promise<SaveResult> => {
@@ -29,7 +33,11 @@ export function install(c: Chrome, env: Env): (tabId: number, tags: readonly str
     if (busy) return busy;
     const job = (async () => {
       await c.action.setBadgeText({ tabId, text: "…" }).catch(() => undefined);
-      const result = await saveTab(env, tabId, tags);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timedOut = new Promise<SaveResult>((resolve) => {
+        timer = setTimeout(() => resolve({ kind: "failed", url: "", error: `the save did not finish in ${SAVE_TIMEOUT_MS / 60_000} minutes` }), SAVE_TIMEOUT_MS);
+      });
+      const result = await Promise.race([saveTab(env, tabId, tags), timedOut]).finally(() => clearTimeout(timer));
       await c.storage.session.set({ [resultKey(tabId)]: result }).catch(() => undefined);
       const badge = BADGE[result.kind];
       await c.action.setBadgeBackgroundColor({ tabId, color: badge.color }).catch(() => undefined);

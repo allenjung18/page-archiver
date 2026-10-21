@@ -15,6 +15,8 @@ import type { ContentApi, FrameReport, MarkedFrame } from "./protocol.ts";
 export const FRAME_ATTRIBUTE = "data-page-archiver-frame";
 /** The key of the message a parent frame posts into a child frame. */
 export const MESSAGE_KEY = "page-archiver:frame-id";
+/** core's FONTS_CAP_MS (warnings.ts): how long a snapshot waits for document.fonts.ready; a test holds the two equal. */
+export const FONTS_CAP_MS = 5_000;
 
 declare const PageArchiverSerializer: { snapshot(opts: object): Snapshot };
 
@@ -69,8 +71,11 @@ export function createContentApi(win: Window): ContentApi {
     },
     frameId: (nonce) => received.get(nonce) ?? null,
     async snapshot(nonce): Promise<FrameReport> {
-      await win.document.fonts?.ready;
+      // a web font that started loading late and never answers must not hold the save open
+      const fonts = win.document.fonts?.ready.then(() => true) ?? Promise.resolve(true);
+      const ready = await Promise.race([fonts, new Promise<boolean>((r) => setTimeout(() => r(false), FONTS_CAP_MS))]);
       const snap = PageArchiverSerializer.snapshot({});
+      if (!ready) snap.warnings = [...(snap.warnings ?? []), `web fonts not ready after ${FONTS_CAP_MS / 1000} s; captured anyway`];
       const loaded = win.performance.getEntriesByType("resource").map((e) => e.name);
       return { snap, id: received.get(nonce) ?? null, loaded };
     },
