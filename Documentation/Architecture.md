@@ -150,10 +150,12 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   `customPropertyStrings` and its `StringScope`), in a sheet, a `style` attribute and a sheet
   postcss cannot parse, but
   only when its URL, resolved against the sheet it is written in, is one the browser got a
-  response for while the page loaded: an image it fetched (`ctx.fetched`, and an image type by
-  `effectiveMime`, since `"/"` or `"app.css"` names the page or a sheet the browser did fetch; a
-  declared type that is not an image's, a PNG served as `text/html` say, keeps the string as
-  written, while no type or `text/plain` is sniffed) becomes a `data:` URI string, and
+  response for while the page loaded: an image it fetched (`ctx.fetched`, and an image by
+  `imageMime`, since `"/"` or `"app.css"` names the page or a sheet the browser did fetch: the
+  declared type when it is an image's, else the bytes, sniffed by `sniffMime` when the type is
+  generic, and for a raster signature only (PNG, JPEG, GIF, WebP, AVIF, icon) when it is not an
+  image's, a PNG served as `text/html` or `application/json` say, as Chromium decodes one whatever
+  the type; an SVG it takes only as `image/svg+xml`) becomes a `data:` URI string, and
   one it asked for whose bytes cannot be had (`ctx.requested`: an HTTP error live, or a cap)
   becomes `"data:"` and a comment with its URL. Any other string is kept as written: a custom
   property holds font names and `content` text as often as images, a fallback or an `if()` branch
@@ -166,7 +168,8 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   called directly) keeps every such string as written. So an image a substitution names that got
   no response while the page was saved (one used only on `:hover`, a branch the page did not take,
   a host that did not answer, a request still pending when the recording stopped), or whose
-  response declared a type that is not an image's, stays a live URL, and an archive opened from
+  response is not an image by `imageMime` (an SVG served as `text/html`, which the page did not
+  draw either), stays a live URL, and an archive opened from
   disk with no CSP fetches it if that value ever applies; served by the library, the CSP refuses it.
 - `img src` (with `srcset`, `sizes`, `loading` removed), `input type=image`, `video poster`,
   SVG `<image>`/`<feImage>` `href`, and `background` become `data:` URIs (`inlineAttr`); one that
@@ -175,9 +178,9 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   live reference, so an archive opened from disk with no CSP asks the network for nothing the page
   loaded, with one kind of exception: a string a substitution may bring into an `image-set()`
   (a custom property's, a fallback's, an `if()` branch's or a custom function's) stays live when
-  it got no response while the page was saved, when its response declared a type that is not an
-  image's (a PNG served as `text/html`: the page loaded it, and the archive fetches it again), or,
-  in an extension save, when the page's resource timing did not hold it (past 250 entries, or
+  it got no response while the page was saved, when its response is not an image by its type or
+  its raster signature (an SVG served as `text/html`, which the page did not draw), or, in an
+  extension save, when the page's resource timing did not hold it (past 250 entries, or
   cleared by the page), above.
   That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes, an SVG `cursor` and
   the values an SVG `<set>` or `<animate>` writes into any of those URL attributes too (below), and for

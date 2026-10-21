@@ -77,9 +77,12 @@ string that a CSS substitution (a custom property or an `@property`'s `initial-v
 `env()`, `attr()` or `inherit()` fallback, an `if()` branch, a custom `@function`) may bring into
 an `image-set()`, when the browser got no response for it while the page was saved (an image used
 only on `:hover`, a branch the page did not take, or a host that did not answer, say), because
-nothing else tells it from a font name or `content` text. Such a string is kept too when its
-response declared a type that is not an image's (a PNG served as `text/html`): the page loaded
-that image, and the archive asks for it again. The Chrome extension learns what the page loaded
+nothing else tells it from a font name or `content` text. A string the browser did fetch is
+inlined when its response is an image: by its declared type, or by its bytes when that type is
+generic or not an image's, so a PNG, JPEG, GIF, WebP, AVIF or icon served as `text/html` or
+`application/json` is inlined as the browser drew it. One whose bytes are not such an image is kept
+as written (an SVG served as `text/html`, which the browser does not draw either, is asked for
+again). The Chrome extension learns what the page loaded
 from the browser's resource timing, which keeps 250 entries unless the page enlarges it, and which
 a page can clear, so past that, or once a page clears it, such a string naming an image the page
 did load may be kept as written as well. Opened from disk, the archive fetches a kept URL if that
