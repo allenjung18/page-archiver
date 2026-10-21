@@ -1,12 +1,14 @@
 // Saving a tab: snapshot every frame in the tab (content.ts), fetch every resource the snapshots
-// name from the service worker (host permission for every site, so no CORS, and the reader's
-// cookies go with each request), assemble the archive with core's own assemble(), then hand it
+// name from the service worker (host permission for every site, so no CORS; the reader's cookies
+// go only to the page's own site, and no private-network host but the page's own is fetched, see
+// hosts.ts), assemble the archive with core's own assemble(), then hand it
 // to the library server; when the server is not running or will not take it, download
 // archive.html instead so the capture is never lost.
 import { assemble, base64, createResolver, DEFAULT_RESOURCE_CAP, DEFAULT_TOTAL_CAP, MAX_FRAME_DEPTH } from "@page-archiver/core/portable";
 import type { Chrome, InjectionResult } from "./chrome.ts";
+import { credentialsFor, refusal } from "./hosts.ts";
 import type { ContentApi, FrameReport, MarkedFrame, SaveResult } from "./protocol.ts";
-import { deliver, type Fetch } from "./server.ts";
+import { deliver, serverUrl, type Fetch } from "./server.ts";
 import { buildTree } from "./tree.ts";
 
 /** Injected into every frame, in this order (both are in the extension's own folder). */
@@ -23,9 +25,26 @@ type Api = { __pageArchiver?: ContentApi };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** A resource's bytes from the service worker, with the reader's cookies. */
-export async function fetchResource(fetchFn: Fetch, url: string): Promise<{ status: number; mime: string; bytes: Uint8Array }> {
-  const res = await fetchFn(url, { credentials: "include", cache: "force-cache", redirect: "follow", signal: AbortSignal.timeout(30_000) });
+/** The page a resource is fetched for, and the library server's address (both shape the fetch, hosts.ts). */
+export interface FetchFor {
+  pageUrl: string;
+  server?: string;
+}
+
+/**
+ * A resource's bytes from the service worker, with the reader's cookies when it is on the page's
+ * own site. A target `refusal` names (a private-network host not the page's own, the library
+ * server), before the fetch or after a redirect, throws: the resolver sets it aside with a warning.
+ */
+export async function fetchResource(fetchFn: Fetch, url: string, page: FetchFor): Promise<{ status: number; mime: string; bytes: Uint8Array }> {
+  const why = refusal(url, page.pageUrl, page.server);
+  if (why) throw new Error(`refused: ${why}`);
+  const res = await fetchFn(url, { credentials: credentialsFor(url, page.pageUrl), cache: "force-cache", redirect: "follow", signal: AbortSignal.timeout(30_000) });
+  const after = res.redirected && res.url ? refusal(res.url, page.pageUrl, page.server) : null;
+  if (after) {
+    await res.body?.cancel().catch(() => undefined);
+    throw new Error(`refused: redirected to ${res.url}, ${after}`);
+  }
   return { status: res.status, mime: res.headers.get("content-type") ?? "", bytes: new Uint8Array(await res.arrayBuffer()) };
 }
 
@@ -88,9 +107,10 @@ export async function saveTab(env: Env, tabId: number, tags: readonly string[]):
   try {
     const capturedAt = (env.now ?? (() => new Date()))();
     const { tree, loaded, warnings } = await snapshotTab(env, tabId);
+    const server = await serverUrl(env.storage.local);
     const resolver = createResolver({
       recorder: { get: async (u: string) => ({ kind: "miss" as const, url: u }) },
-      fallback: (u) => fetchResource(env.fetch, u),
+      fallback: (u) => fetchResource(env.fetch, u, { pageUrl: url, server }),
       resourceCap: DEFAULT_RESOURCE_CAP,
       totalCap: DEFAULT_TOTAL_CAP,
     });

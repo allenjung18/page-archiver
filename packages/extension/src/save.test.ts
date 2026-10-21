@@ -22,28 +22,33 @@ const snap: Snapshot = {
 };
 
 /** A tab with one frame whose content script answers with `snap`. */
-function env(opts: { serverUp: boolean; url?: string }) {
+function env(opts: { serverUp: boolean; url?: string; html?: string; responses?: Record<string, () => Response> }) {
   const api: ContentApi = {
     mark: () => [],
     frameId: () => null,
-    snapshot: async (): Promise<FrameReport> => ({ snap, id: null, loaded: [] }),
+    snapshot: async (): Promise<FrameReport> => ({ snap: opts.html ? { ...snap, html: opts.html } : snap, id: null, loaded: [] }),
     unmark: () => undefined,
   };
   const g = globalThis as { __pageArchiver?: ContentApi };
   const fetched: string[] = [];
+  const credentials: Record<string, RequestCredentials | undefined> = {};
   const posted: Array<{ url: string; html: string; tags: string[] }> = [];
   const downloads: Array<{ url: string; filename: string }> = [];
   const fetchFn: Fetch = async (url, init) => {
-    if (url.startsWith("http://127.0.0.1:47320/")) {
+    if (url.startsWith("http://127.0.0.1:47320/") && init?.method) {
       if (!opts.serverUp) throw new TypeError("Failed to fetch");
       if (init?.method === "GET") return new Response(`<meta name="pa-token" content="${TOKEN}">`);
       posted.push(JSON.parse(String(init?.body)));
       return Response.json({ page: { id: "pid000000001" }, warnings: [] }, { status: 201 });
     }
     fetched.push(url);
-    expect(init?.credentials, "resource fetches carry the reader's cookies").toBe("include");
+    credentials[url] = init?.credentials;
+    const made = opts.responses?.[url];
+    if (made) return made();
     if (url === "https://site.test/s.css") return new Response("body { background: url(bg.png) }", { headers: { "content-type": "text/css" } });
     if (url === "https://site.test/bg.png" || url === "https://cdn.test/i.png") return new Response(PNG, { headers: { "content-type": "image/png" } });
+    if (url.startsWith("http://127.0.0.1:47320/")) return new Response(`<meta name="pa-token" content="${TOKEN}">`, { headers: { "content-type": "image/png" } });
+    if (/^http:\/\/(192\.168\.|10\.|169\.254\.|\[::1\])/.test(url)) return new Response(PNG, { headers: { "content-type": "image/png" } });
     return new Response("", { status: 404 });
   };
   const e: Env = {
@@ -65,7 +70,7 @@ function env(opts: { serverUp: boolean; url?: string }) {
     now: () => new Date("2026-10-20T08:00:00.123Z"),
     frameWaitMs: 0,
   };
-  return { env: e, fetched, posted, downloads };
+  return { env: e, fetched, credentials, posted, downloads };
 }
 
 function checkArchive(html: string) {
@@ -85,6 +90,42 @@ describe("saveTab", () => {
     expect(t.posted[0]).toMatchObject({ url: PAGE, tags: ["a", "b"] });
     checkArchive(t.posted[0]!.html);
     expect(t.downloads).toEqual([]);
+    expect(t.credentials, "the reader's cookies go to the page's own site only").toEqual({
+      "https://site.test/s.css": "include",
+      "https://site.test/bg.png": "include",
+      "https://cdn.test/i.png": "omit",
+    });
+  });
+
+  it("sets aside, unfetched, resources on loopback, private-network and link-local hosts that are not the page's own", async () => {
+    const refused = ["http://127.0.0.1:47320/t.png", "http://192.168.0.1/x.png", "http://10.0.0.8/y.png", "http://169.254.169.254/latest/meta-data/", "http://[::1]/a.png"];
+    const html = `<!doctype html><html><head><title>Article</title></head><body>${refused.map((u) => `<img src="${u}">`).join("")}<img src="https://cdn.test/i.png"></body></html>`;
+    const t = env({ serverUp: false, html });
+    const result = await saveTab(t.env, 4, []);
+    expect(result.kind).toBe("downloaded");
+    expect(t.fetched, "only the public image is fetched").toEqual(["https://cdn.test/i.png"]);
+    const warnings = result.kind === "downloaded" ? result.warnings : [];
+    for (const u of refused) expect(warnings, u).toContainEqual(expect.stringMatching(new RegExp(`^${u.replace(/[.[\]/]/g, "\\$&")}: .*refused: an? (loopback|private network|link-local) address.*; set aside$`)));
+    const archive = Buffer.from(t.downloads[0]!.url.split(",")[1]!, "base64").toString("utf8");
+    expect(archive, "the server's token is not in the archive").not.toContain(TOKEN);
+    for (const u of refused) expect(archive).toContain(`data-page-archiver-unfetched-src="${u}"`);
+  });
+
+  it("sets aside a public resource that redirects to a loopback address", async () => {
+    const redirected = () => {
+      const res = new Response(`<meta name="pa-token" content="${TOKEN}">`, { headers: { "content-type": "image/png" } });
+      Object.defineProperty(res, "redirected", { value: true });
+      Object.defineProperty(res, "url", { value: "http://127.0.0.1:47320/" });
+      return res;
+    };
+    const html = `<!doctype html><html><head><title>Article</title></head><body><img src="https://evil.test/r.png"></body></html>`;
+    const t = env({ serverUp: false, html, responses: { "https://evil.test/r.png": redirected } });
+    const result = await saveTab(t.env, 4, []);
+    const warnings = result.kind === "downloaded" ? result.warnings : [];
+    expect(warnings).toContainEqual(expect.stringMatching(/^https:\/\/evil\.test\/r\.png: .*redirected to http:\/\/127\.0\.0\.1:47320\/.*a loopback address.*; set aside$/));
+    const archive = Buffer.from(t.downloads[0]!.url.split(",")[1]!, "base64").toString("utf8");
+    expect(archive).not.toContain(TOKEN);
+    expect(archive).not.toContain(Buffer.from(`<meta name="pa-token"`).toString("base64").slice(0, 16));
   });
 
   it("downloads archive.html when the server is not running", async () => {
