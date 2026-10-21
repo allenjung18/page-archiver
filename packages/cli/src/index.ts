@@ -104,9 +104,20 @@ function pageLine(p: PageRecord): string {
   return `${p.id}  ${p.capturedAt.slice(0, 10)}  v${p.version}/${p.versions}  ${p.site ?? "-"}  ${p.title}${tags}`;
 }
 
-function openInBrowser(path: string): void {
+/**
+ * Opens path (or a URL) with the system's opener. Resolves null once it started, or why it could
+ * not (no opener installed: a container, a server without a desktop); never an unhandled error.
+ */
+function openInBrowser(path: string): Promise<string | null> {
   const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
-  spawn(opener, [path], { detached: true, stdio: "ignore" }).unref();
+  return new Promise((resolve) => {
+    const child = spawn(opener, [path], { detached: true, stdio: "ignore" });
+    child.once("error", (err) => resolve(err.message));
+    child.once("spawn", () => {
+      child.unref();
+      resolve(null);
+    });
+  });
 }
 
 async function libraryCommand(args: LibraryArgs): Promise<number> {
@@ -138,7 +149,11 @@ async function libraryCommand(args: LibraryArgs): Promise<number> {
         if (!existsSync(path)) throw new QueryError(`${page.id} has no ${basename(path)}`);
         if (args.print) console.log(path);
         else {
-          openInBrowser(path);
+          const failed = await openInBrowser(path);
+          if (failed) {
+            console.error(`pa: could not open a browser (${failed}); open ${path}`);
+            return 1;
+          }
           console.log(`opened ${path}`);
         }
         return 0;
@@ -174,7 +189,10 @@ async function serve(args: ServeArgs): Promise<number> {
   const count = server.library.list().length;
   console.log(`page-archiver: serving ${root} (${count} ${count === 1 ? "page" : "pages"}) at ${server.url}`);
   console.log(`write token: ${server.token}`);
-  if (args.open && !process.env["PA_NO_OPEN"]) openInBrowser(server.url);
+  if (args.open && !process.env["PA_NO_OPEN"]) {
+    const failed = await openInBrowser(server.url);
+    if (failed) console.error(`pa: could not open a browser (${failed}); open ${server.url}`);
+  }
   await new Promise<void>((resolve) => {
     for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => resolve());
   });
