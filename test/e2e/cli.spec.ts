@@ -1,6 +1,7 @@
 // `pa save <url> -o <file>` end to end: the built CLI captures a fixture into the named file.
 import { execFile, spawn } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
@@ -70,4 +71,53 @@ test("pa open with no browser opener installed fails without saying it opened th
   expect((err as { stdout: string }).stdout).not.toMatch(/^opened /m);
   expect((err as { stderr: string }).stderr).toMatch(/^pa: could not open a browser \(.*\); open .*archive\.html$/m);
   expect((err as { stderr: string }).stderr, "no stack trace").not.toMatch(/\n\s+at /);
+});
+
+/** What `pa <args>` exits with and prints, in a library of the test's own (PA_LIBRARY is always set). */
+async function pa(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+  const env = { ...process.env, PA_LIBRARY: test.info().outputPath("exit-lib"), PA_NO_OPEN: "1" };
+  try {
+    const { stdout, stderr } = await run(process.execPath, [PA, ...args], { env });
+    return { code: 0, stdout, stderr };
+  } catch (e) {
+    const err = e as { code: number; stdout: string; stderr: string };
+    return { code: err.code, stdout: err.stdout, stderr: err.stderr };
+  }
+}
+
+test("exit codes: 2 for a usage error, 1 for a failure at run time, 0 for help", async () => {
+  expect(await pa(["frobnicate"])).toMatchObject({ code: 2, stderr: expect.stringContaining("pa: unknown command 'frobnicate'") });
+  expect((await pa(["help"])).code).toBe(0);
+  expect(await pa(["tag", "zzzzzzzz"])).toMatchObject({ code: 2, stderr: expect.stringMatching(/^pa: no page with id zzzzzzzz/) });
+  // a search with no hit, and an import of a file that is not there, are failures, not usage errors
+  expect(await pa(["search", "nothingwillmatchthis"])).toMatchObject({ code: 1, stderr: expect.stringContaining("no matches for nothingwillmatchthis") });
+  const missing = test.info().outputPath("missing.html");
+  const bad = await pa(["import", missing]);
+  expect(bad.code).toBe(1);
+  expect(bad.stderr).toContain("pa: ");
+  expect(bad.stderr).toContain("missing.html");
+  // a page that cannot be loaded at all
+  const closed = await new Promise<number>((resolve) => {
+    const s = createServer();
+    s.listen(0, "127.0.0.1", () => {
+      const port = (s.address() as { port: number }).port;
+      s.close(() => resolve(port));
+    });
+  });
+  const save = await pa(["save", `http://127.0.0.1:${closed}/`]);
+  expect(save.code).toBe(1);
+  expect(save.stderr).toMatch(/^pa: /m);
+});
+
+test("pa serve on a port in use exits 1 and names --port", async () => {
+  const holder = createServer();
+  await new Promise<void>((resolve) => holder.listen(0, "127.0.0.1", resolve));
+  const port = (holder.address() as { port: number }).port;
+  try {
+    const res = await pa(["serve", "--no-open", "--port", String(port), "--library", test.info().outputPath("busy-lib")]);
+    expect(res.code).toBe(1);
+    expect(res.stderr).toContain(`pa: port ${port} is in use: pass another with --port`);
+  } finally {
+    await new Promise<void>((resolve) => holder.close(() => resolve()));
+  }
 });
