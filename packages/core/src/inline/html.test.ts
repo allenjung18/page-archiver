@@ -722,3 +722,21 @@ describe("inlineDocument: a url() read as the CSS tokenizer reads it", () => {
     expect(out, "no address left that the archive would fetch").not.toMatch(/cdn\.test|a\.png/);
   });
 });
+
+describe("inlineDocument: a custom property's string that var() brings into an image-set()", () => {
+  it("inlines one the browser fetched in a style attribute and a <style>, and keeps the rest as written", async () => {
+    const doc = parseDocument(
+      `<style>.n7{--v:"/n7.png";background-image:image-set(var(--v) 1x)}</style>` +
+        `<div id="d" style="--u:'/n6.png';background-image:image-set(var(--u) 1x)"></div>` +
+        `<div id="k" style="--label:'Kept';--later:'/hover.png'"></div>`,
+    );
+    const { ctx, requested } = ctxFor({ "http://site.test/n6.png": PNG, "http://site.test/n7.png": PNG, "http://site.test/hover.png": PNG });
+    ctx.fetched = (url) => url === "http://site.test/n6.png" || url === "http://site.test/n7.png";
+    await inlineDocument(doc, ctx);
+    const out = serializeDocument(doc);
+    expect(getAttr(byId(doc, "d"), "style")).toBe(`--u:"${PNG_URI}";background-image:image-set(var(--u) 1x)`);
+    expect(out).toContain(`.n7{--v:"${PNG_URI}";background-image:image-set(var(--v) 1x)}`);
+    expect(getAttr(byId(doc, "k"), "style")).toBe(`--label:'Kept';--later:'/hover.png'`);
+    expect(requested.sort()).toEqual(["http://site.test/n6.png", "http://site.test/n7.png"]);
+  });
+});

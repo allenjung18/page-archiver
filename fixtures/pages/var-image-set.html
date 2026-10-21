@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A string reaching an image-set() through var()</title>
+<!-- A string in a custom property is fetched when var() brings it into an image-set(): the
+     browser fetches it as it does a url(). Each box below is drawn by one, declared in a style
+     attribute, a <style> (on the box, or on :root and used in another rule) or the linked sheet
+     (a relative string, resolved against that sheet). Each must be inlined: opened from disk with
+     no CSP, the archive must make no request. The strings that are not images (a content value,
+     a font name, one used only on :hover, which the page never fetched) must be kept as written. -->
+<link rel="stylesheet" href="{{ASSETS}}/css/var-image-set.css">
+<style>
+  :root { --root-image: "{{ASSETS}}/img/lazy-3.png?vi-root"; --label: "Kept as written"; --face: "Georgia"; }
+  .grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+  .box { width: 200px; height: 80px; background-color: #d8e0c8; background-repeat: no-repeat; background-size: 200px 80px; }
+  .n7 { --v: "{{ASSETS}}/img/lazy-2.png?vi-style"; background-image: image-set(var(--v) 1x); }
+  .root { background-image: -webkit-image-set(var(--root-image) 1x); }
+  .hover { --later: "{{ASSETS}}/img/lazy-6.png?vi-hover"; }
+  .hover:hover { background-image: image-set(var(--later) 1x); }
+  .label::after { content: var(--label); font-family: var(--face), serif; }
+</style>
+</head>
+<body>
+<main>
+  <article>
+    <h1>A string reaching an image-set() through var()</h1>
+    <p class="byline">By A. Fixture &middot; 21 October 2026</p>
+    <div class="grid">
+      <div class="box" style="--u:'{{ASSETS}}/img/lazy-1.png?vi-attr';background-image:image-set(var(--u) 1x)"></div>
+      <div class="box n7"></div>
+      <div class="box root"></div>
+      <div class="box sheet"></div>
+      <div class="box hover"></div>
+      <p class="label"></p>
+    </div>
+  </article>
+</main>
+</body>
+</html>

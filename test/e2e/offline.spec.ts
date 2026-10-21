@@ -241,6 +241,21 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html, "no url() of the fixture left to fetch").not.toMatch(/\.png\?te-/);
     },
   },
+  "var-image-set": {
+    withoutCsp: true,
+    check(html) {
+      // a string in a custom property that var() brings into an image-set() is fetched as a url()
+      // is: each one the page loaded is inlined as a data: URI string (a style attribute, a
+      // <style>, :root, and the linked sheet's relative one, resolved against that sheet)
+      for (const tag of ["vi-attr", "vi-style", "vi-root", "vi-sheet"]) expect(html, tag).not.toContain(tag);
+      expect(count(html, /--[\w-]+:\s*(?:&quot;|"|')data:image\/png;base64,/g)).toBe(4);
+      // a string the page never fetched is kept as written: a content value, a font name, and
+      // an image used only on :hover
+      expect(html).toContain('--label: "Kept as written"');
+      expect(html).toContain('--face: "Georgia"');
+      expect(html).toMatch(/--later: "http:\/\/127\.0\.0\.1:\d+\/img\/lazy-6\.png\?vi-hover"/);
+    },
+  },
   "external-refs": {
     // the PDF is declared as one, so it is set aside without being fetched; the sprite that is
     // not there answers HTTP 404

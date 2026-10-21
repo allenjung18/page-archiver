@@ -1,0 +1,2 @@
+/* a relative string in a custom property resolves against this sheet, as a url() in it does */
+.sheet { --sheet-image: "../img/lazy-4.png?vi-sheet"; background-image: image-set(var(--sheet-image) 1x); }

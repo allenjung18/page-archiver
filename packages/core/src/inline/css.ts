@@ -4,7 +4,7 @@
 // @import chain two folders deep must still find its backgrounds. A data: sheet (a <link> or an
 // @import of data:text/css) is decoded and made self-contained the same way; a relative URL in it
 // names nothing, as it does live.
-import postcss, { type AtRule, type ChildNode, type Root } from "postcss";
+import postcss, { type AtRule, type ChildNode, type Declaration, type Root } from "postcss";
 import { utf8 } from "../bytes.ts";
 import type { Resource } from "../resources.ts";
 import { toDataUri } from "./datauri.ts";
@@ -487,6 +487,93 @@ export async function inlineUrls(
   return out + text.slice(last);
 }
 
+/** True when a declaration's property (its escapes decoded) is a custom property, `--*`. */
+export function isCustomProperty(prop: string): boolean {
+  return identAt(prop, 0).name.startsWith("--");
+}
+
+/**
+ * The strings in a custom property's value (`list` false: text is that value), or in the value of
+ * every custom property of a declaration list, a style attribute or a sheet postcss could not
+ * parse (`list` true). var() can bring such a string into an image-set(), which fetches it as it
+ * does a url(). Not a string in a url() or in an image-set() written in the value: inlineUrls has
+ * those. Comments, strings and a bad url's remnants are read past as the tokenizer reads them.
+ */
+export function customPropertyStrings(text: string, list: boolean): CssRef[] {
+  const found: CssRef[] = [];
+  let inValue = !list; // reading a custom property's value
+  let atStart = true; // where a declaration may start (after "{", ";", "}" or at the start)
+  let depth = 0; // brackets open in the value
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i]!;
+    if (c === "/" && text[i + 1] === "*") {
+      i = commentEnd(text, i);
+    } else if (isCssSpace(c)) {
+      i++;
+    } else if (c === '"' || c === "'") {
+      const s = stringAt(text, i);
+      if (inValue && !s.bad) found.push({ index: i, length: s.end - i, raw: s.raw });
+      atStart = false;
+      i = s.end;
+    } else if (isNameChar(c)) {
+      const fn = functionAt(text, i);
+      if (list && !inValue && atStart && !fn) {
+        const id = identAt(text, i);
+        const colon = skipSpaceAndComments(text, id.end);
+        if (id.name.startsWith("--") && text[colon] === ":") {
+          inValue = true;
+          depth = 0;
+          atStart = false;
+          i = colon + 1;
+          continue;
+        }
+      }
+      atStart = false;
+      i = fn && isImageSet(fn.name) ? scanImageSet(text, fn.open + 1, []) : afterName(text, i, fn);
+    } else {
+      if (inValue) {
+        if (c === "(" || c === "[" || c === "{") depth++;
+        else if ((c === ")" || c === "]" || c === "}") && depth > 0) depth--;
+        else if (list && depth === 0 && (c === ";" || c === "}")) inValue = false;
+      }
+      atStart = list && !inValue && (c === ";" || c === "{" || c === "}");
+      i++;
+    }
+  }
+  return found;
+}
+
+/**
+ * Replaces each string of a custom property in text (customPropertyStrings) that names a URL the
+ * browser fetched while the page loaded (ctx.fetched) with a data: URI string of what it fetched;
+ * one the browser fetched whose bytes cannot be had is set aside, as "data:" and a comment with
+ * its URL. Any other string is kept as written: a custom property holds font names and `content`
+ * text as often as images, and only the browser's fetch tells them apart. With no ctx.fetched
+ * (a caller that did not record the page's loads), every string is kept as written.
+ */
+export async function inlineCustomPropertyStrings(text: string, base: string, ctx: CssContext, list: boolean): Promise<string> {
+  const fetched = ctx.fetched;
+  if (!fetched || !/["']/.test(text)) return text;
+  const refs = customPropertyStrings(text, list);
+  if (!refs.length) return text;
+  const replacements = await Promise.all(
+    refs.map(async (r) => {
+      const url = resolveCssUrl(r.raw, base);
+      if (!url || !fetched(url)) return text.slice(r.index, r.index + r.length);
+      const res = await ctx.get(url);
+      return res ? `"${toDataUri(res.bytes, res.mime)}"` : `"data:" /*${unfetchedNote("", url)}*/`;
+    }),
+  );
+  let out = "";
+  let last = 0;
+  refs.forEach((r, i) => {
+    out += text.slice(last, r.index) + replacements[i];
+    last = r.index + r.length;
+  });
+  return out + text.slice(last);
+}
+
 interface ImportParams {
   url: string;
   layer: string | null; // null: no layer; "": anonymous layer
@@ -599,6 +686,13 @@ function setImportsAside(css: string, sheetUrl: string): string {
   return out + css.slice(last);
 }
 
+/** True when a declaration's value is one var() can bring into an image-set(): a custom property's, or an @property's initial-value. */
+function holdsCustomValue(decl: Declaration): boolean {
+  if (isCustomProperty(decl.prop)) return true;
+  const parent = decl.parent;
+  return decl.prop.toLowerCase() === "initial-value" && parent?.type === "atrule" && (parent as AtRule).name.toLowerCase() === "property";
+}
+
 /**
  * The stylesheet `css`, fetched from (or written in a page at) `sheetUrl`, made self-contained.
  * `stack` is the chain of sheets importing this one; an @import back into it is a cycle and is
@@ -611,7 +705,8 @@ export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, 
     root = postcss.parse(css, { from: undefined });
   } catch (err) {
     ctx.warn(`${label}: CSS did not parse (${(err as Error).message.split("\n")[0]}); url()s inlined, @import set aside`);
-    return inlineUrls(setImportsAside(css, sheetUrl), sheetUrl, ctx);
+    const urls = await inlineUrls(setImportsAside(css, sheetUrl), sheetUrl, ctx);
+    return inlineCustomPropertyStrings(urls, sheetUrl, ctx, true);
   }
 
   const imports: AtRule[] = [];
@@ -687,11 +782,13 @@ export async function inlineCss(css: string, sheetUrl: string, ctx: CssContext, 
 
   const decls: Promise<void>[] = [];
   root.walkDecls((decl) => {
-    if (hasCssRefs(decl.value)) {
+    const custom = holdsCustomValue(decl);
+    if (hasCssRefs(decl.value) || custom) {
       decls.push(
-        inlineUrls(decl.value, sheetUrl, ctx).then((v) => {
-          decl.value = v;
-        }),
+        (async () => {
+          const v = hasCssRefs(decl.value) ? await inlineUrls(decl.value, sheetUrl, ctx) : decl.value;
+          decl.value = custom ? await inlineCustomPropertyStrings(v, sheetUrl, ctx, false) : v;
+        })(),
       );
     }
   });

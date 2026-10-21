@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Resource } from "../resources.ts";
-import { hasCssRefs, inlineCss, inlineUrls, parseImport, resolveCssUrl, type CssContext } from "./css.ts";
+import { customPropertyStrings, hasCssRefs, inlineCss, inlineCustomPropertyStrings, inlineUrls, parseImport, resolveCssUrl, type CssContext } from "./css.ts";
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const PNG_URI = `data:image/png;base64,${PNG.toString("base64")}`;
@@ -415,5 +415,69 @@ describe("url() and strings read as the CSS tokenizer reads them", () => {
     expect(resolveCssUrl("\u00a0#x", "http://s.test/"), "a no-break space before a # is not a fragment").toBe("http://s.test/%C2%A0#x");
     // nor between the name and the string: a no-break space there makes the quote a bad url
     expect(await inlineUrls(`url(\u00a0"a.png")`, "http://s.test/", ctx)).toBe(`url(\u00a0"a.png")`);
+  });
+});
+
+describe("a custom property's string, which var() can bring into an image-set()", () => {
+  // Chromium fetches `--u:"a.png"; background-image: image-set(var(--u) 1x)` as it does a url()
+  const FETCHED = (urls: string[]) => (url: string) => urls.includes(url);
+
+  it("inlines a string the browser fetched, in a sheet's custom property and on :root used elsewhere", async () => {
+    const { ctx, asked } = site({ "http://s.test/img/a.png": PNG, "http://s.test/img/b.png": PNG });
+    ctx.fetched = FETCHED(["http://s.test/img/a.png", "http://s.test/img/b.png"]);
+    const out = await inlineCss(`:root{--b:'../img/b.png'}.n7{--v:"../img/a.png";background-image:image-set(var(--v) 1x)}.r{background:image-set(var(--b) 1x)}`, "http://s.test/css/site.css", ctx);
+    expect(out).toBe(`:root{--b:"${PNG_URI}"}.n7{--v:"${PNG_URI}";background-image:image-set(var(--v) 1x)}.r{background:image-set(var(--b) 1x)}`);
+    expect(asked.sort()).toEqual(["http://s.test/img/a.png", "http://s.test/img/b.png"]);
+  });
+
+  it("inlines one in a style attribute's declaration list, and in a sheet that does not parse", async () => {
+    const { ctx } = site({ "http://s.test/a.png": PNG });
+    ctx.fetched = FETCHED(["http://s.test/a.png"]);
+    expect(await inlineCustomPropertyStrings(`--u:'a.png';background-image:image-set(var(--u) 1x)`, "http://s.test/", ctx, true)).toBe(
+      `--u:"${PNG_URI}";background-image:image-set(var(--u) 1x)`,
+    );
+    // escapes in the name, a comment before the colon, the end of the text closing the string
+    expect(await inlineCustomPropertyStrings(String.raw`color:red; \2d-u /* c */ : "a.png`, "http://s.test/", ctx, true)).toBe(String.raw`color:red; \2d-u /* c */ : "${PNG_URI}"`);
+    const broken = await inlineCss(`.a{--v:"a.png";background:image-set(var(--v) 1x)}.b{color:red`, "http://s.test/", ctx);
+    expect(broken).toBe(`.a{--v:"${PNG_URI}";background:image-set(var(--v) 1x)}.b{color:red`);
+  });
+
+  it("keeps a string the browser did not fetch as written: a content value, a font name, an image used only on :hover", async () => {
+    const { ctx, asked } = site({ "http://s.test/a.png": PNG, "http://s.test/Georgia": PNG });
+    ctx.fetched = FETCHED(["http://s.test/a.png"]);
+    const css = `:root{--label:"Kept";--face:"Georgia";--later:"later.png"}.x::after{content:var(--label);font-family:var(--face)}`;
+    expect(await inlineCss(css, "http://s.test/", ctx)).toBe(css);
+    expect(asked, "nothing is fetched for a string the browser did not fetch").toEqual([]);
+  });
+
+  it("keeps every string as written when the caller recorded no fetches", async () => {
+    const { ctx, asked } = site({ "http://s.test/a.png": PNG });
+    const css = `.n7{--v:"a.png";background-image:image-set(var(--v) 1x)}`;
+    expect(await inlineCss(css, "http://s.test/", ctx)).toBe(css);
+    expect(await inlineCustomPropertyStrings(`--u:'a.png'`, "http://s.test/", ctx, true)).toBe(`--u:'a.png'`);
+    expect(asked).toEqual([]);
+  });
+
+  it("sets aside a string the browser fetched whose bytes cannot be had", async () => {
+    const { ctx } = site({});
+    ctx.fetched = FETCHED(["http://s.test/gone.png"]);
+    expect(await inlineCss(`.x{--v:"gone.png"}`, "http://s.test/", ctx)).toBe(`.x{--v:"data:" /* page-archiver unfetched: http://s.test/gone.png */}`);
+  });
+
+  it("reads only custom properties' values, and not a string a url() or an image-set() in one holds", () => {
+    const at = (text: string, list: boolean) => customPropertyStrings(text, list).map((r) => r.raw);
+    expect(at(`content:"a";--x:"b" 'c';font-family:"d";--y:{ "e"; "f" };--z:"g"`, true)).toEqual(["b", "c", "e", "f", "g"]);
+    expect(at(`.a{content:"a"}.b{--x:"b"}@media print{.c{--y:"c";background:"d"}}`, true)).toEqual(["b", "c"]);
+    expect(at(`url("a.png") image-set("b.png" 1x) "c" fn("d") /* "e" */`, false)).toEqual(["c", "d"]);
+    // a string a newline ends is a bad string, which fetches nothing
+    expect(at(`--x:"a\n;--y:"b"`, true)).toEqual(["b"]);
+  });
+
+  it("inlines an @property's initial-value, which var() falls back to", async () => {
+    const { ctx } = site({ "http://s.test/a.png": PNG });
+    ctx.fetched = FETCHED(["http://s.test/a.png"]);
+    expect(await inlineCss(`@property --v{syntax:"*";inherits:false;initial-value:"a.png"}`, "http://s.test/", ctx)).toBe(
+      `@property --v{syntax:"*";inherits:false;initial-value:"${PNG_URI}"}`,
+    );
   });
 });

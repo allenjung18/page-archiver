@@ -28,7 +28,7 @@ import {
   type ParentNode,
 } from "../dom.ts";
 import { sanitizeDocument } from "../sanitize.ts";
-import { dataCssText, decodeCss, hasCssRefs, inlineCss, inlineUrls, resolveCssUrl, sheetLabel, UNFETCHED_URL, urlTokens, type CssContext } from "./css.ts";
+import { dataCssText, decodeCss, hasCssRefs, inlineCss, inlineCustomPropertyStrings, inlineUrls, resolveCssUrl, sheetLabel, UNFETCHED_URL, urlTokens, type CssContext } from "./css.ts";
 import { effectiveMime, normalizeMime, toDataUri, toListDataUri } from "./datauri.ts";
 
 export interface HtmlContext extends CssContext {
@@ -687,8 +687,14 @@ async function inlineElements(elements: readonly Element[], ctx: HtmlContext, sp
       if (v !== null) setAttr(el, name, absoluteLink(v, ctx.baseUrl));
     }
     const style = getAttr(el, "style");
-    if (style !== null && hasCssRefs(style)) {
-      jobs.push(inlineUrls(style, ctx.baseUrl, ctx).then((v) => setAttr(el, "style", v)));
+    if (style !== null && (hasCssRefs(style) || style.includes("--") || style.includes("\\"))) {
+      // a custom property's string reaches an image-set() through var(): inlined when the page fetched it
+      const v = hasCssRefs(style) ? inlineUrls(style, ctx.baseUrl, ctx) : Promise.resolve(style);
+      jobs.push(
+        v.then((u) => inlineCustomPropertyStrings(u, ctx.baseUrl, ctx, true)).then((u) => {
+          if (u !== style) setAttr(el, "style", u);
+        }),
+      );
     }
     if (getAttr(el, "background") !== null) jobs.push(inlineAttr(el, "background", ctx));
     if (el.namespaceURI === SVG_NAMESPACE) {
