@@ -77,8 +77,9 @@ at run time so the extension's service worker can bundle it (`packages/core/src/
    An `<iframe>` that was not captured (nested deeper than `MAX_FRAME_DEPTH`, not located, or
    never loaded) is left empty: its `src` is removed, and its own `srcdoc`, which is sanitized
    but never inlined, is set aside into `data-page-archiver-unfetched-srcdoc`, so its images and
-   sheets are not fetched from the live site when the file is opened from disk. Its warning says
-   `left empty` (`, its srcdoc set aside` when it had one).
+   sheets are not fetched from the live site when the file is opened from disk. One too deep or
+   that failed is warned for by `snapshotFrames` (`; left empty`); an unmarked one (not located,
+   never loaded) is warned for here, `; left empty`, with `, its srcdoc set aside` when it had one.
    Then `sizeWarning` (over `LARGE_ARCHIVE_BYTES`, 50 MB), `summarizeWarnings`, `stamp` and
    `finalizeStamp` (`stamp.ts`).
 8. **Extras** (when asked; all of them for a folder, `resolveExtras`): `captureMhtml`
