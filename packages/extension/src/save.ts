@@ -19,6 +19,8 @@ export type Env = Pick<Chrome, "tabs" | "scripting" | "storage" | "downloads"> &
   now?: () => Date;
   /** How long to wait for child frames to learn their ids. Default 2 s. */
   frameWaitMs?: number;
+  /** Aborted when the save is given up (background.ts): it then neither delivers nor downloads. */
+  signal?: AbortSignal;
 };
 
 type Api = { __pageArchiver?: ContentApi };
@@ -123,11 +125,13 @@ export async function saveTab(env: Env, tabId: number, tags: readonly string[]):
     const archive = await assemble({ tree, sourceUrl: url, capturedAt, resolver, fetched: (u) => loaded.has(u), warnings });
     const title = tree.snap.title.trim() || tab.title || url;
 
+    env.signal?.throwIfAborted();
     const sent = await deliver(env.fetch, env.storage.local, { url, html: archive.html, tags: [...tags] });
     if (sent.kind === "saved") return { kind: "saved", url, title, pageId: sent.pageId, libraryUrl: sent.libraryUrl, warnings: sent.warnings };
 
     const filename = downloadName(url, title, capturedAt);
     const dataUrl = `data:text/html;charset=utf-8;base64,${base64(new TextEncoder().encode(archive.html))}`;
+    env.signal?.throwIfAborted();
     const downloadId = await env.downloads.download({ url: dataUrl, filename, conflictAction: "uniquify", saveAs: false });
     return { kind: "downloaded", url, title, filename, downloadId, reason: sent.reason, warnings: archive.warnings };
   } catch (err) {

@@ -169,6 +169,18 @@ describe("saveTab", () => {
     checkArchive(Buffer.from(t.downloads[0]!.url.slice(prefix.length), "base64").toString("utf8"));
   });
 
+  it("neither posts nor downloads a save that was given up", async () => {
+    for (const serverUp of [true, false]) {
+      const t = env({ serverUp });
+      const abort = new AbortController();
+      abort.abort();
+      const result = await saveTab({ ...t.env, signal: abort.signal }, 4, []);
+      expect(result, `server up: ${serverUp}`).toMatchObject({ kind: "failed", url: PAGE });
+      expect(t.posted).toEqual([]);
+      expect(t.downloads).toEqual([]);
+    }
+  });
+
   it("refuses a page that is not http(s) without touching it", async () => {
     const t = env({ serverUp: true, url: "chrome://settings/" });
     expect(await saveTab(t.env, 4, [])).toEqual({ kind: "failed", url: "chrome://settings/", error: "only http and https pages can be saved" });

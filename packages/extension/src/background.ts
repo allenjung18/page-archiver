@@ -8,7 +8,10 @@ declare const chrome: Chrome;
 
 export const MENU_ID = "page-archiver-save";
 
-/** A save that has not finished by then is reported as failed, and the tab may be saved again. */
+/**
+ * A save that has not finished by then is reported as failed and aborted (it then neither
+ * delivers nor downloads; a delivery already sent may still land), and the tab may be saved again.
+ */
 export const SAVE_TIMEOUT_MS = 5 * 60_000;
 
 const BADGE: Record<SaveResult["kind"], { text: string; color: string }> = {
@@ -34,10 +37,18 @@ export function install(c: Chrome, env: Env): (tabId: number, tags: readonly str
     const job = (async () => {
       await c.action.setBadgeText({ tabId, text: "…" }).catch(() => undefined);
       let timer: ReturnType<typeof setTimeout> | undefined;
+      const abort = new AbortController();
       const timedOut = new Promise<SaveResult>((resolve) => {
-        timer = setTimeout(() => resolve({ kind: "failed", url: "", error: `the save did not finish in ${SAVE_TIMEOUT_MS / 60_000} minutes` }), SAVE_TIMEOUT_MS);
+        timer = setTimeout(() => {
+          abort.abort();
+          // the tab's URL, so the popup shows this result for the tab (it matches by URL)
+          const error = `the save did not finish in ${SAVE_TIMEOUT_MS / 60_000} minutes`;
+          void Promise.resolve(env.tabs?.get(tabId))
+            .then((t) => t?.url ?? "", () => "")
+            .then((url) => resolve({ kind: "failed", url, error }));
+        }, SAVE_TIMEOUT_MS);
       });
-      const result = await Promise.race([saveTab(env, tabId, tags), timedOut]).finally(() => clearTimeout(timer));
+      const result = await Promise.race([saveTab({ ...env, signal: abort.signal }, tabId, tags), timedOut]).finally(() => clearTimeout(timer));
       await c.storage.session.set({ [resultKey(tabId)]: result }).catch(() => undefined);
       const badge = BADGE[result.kind];
       await c.action.setBadgeBackgroundColor({ tabId, color: badge.color }).catch(() => undefined);

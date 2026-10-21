@@ -75,8 +75,9 @@ at run time so the extension's service worker can bundle it (`packages/core/src/
    `capture`). That fetch runs from Node, outside the browser's private-network checks, so every
    hop is checked first by `refusal` (`hosts.ts`, the same rules as the extension's, below): a
    loopback, private-network, link-local or unspecified host other than the page's own, and the
-   library server (`CaptureOptions.server`, which `pa save` and the server set to the server's
-   address) by any loopback name, are refused, before the fetch and at each redirect, which is
+   library server (`CaptureOptions.server`: the server passes its own address, `pa save` the
+   default one, `DEFAULT_PORT`, so a server on another port is refused only as any loopback
+   host other than the page's own is) by any loopback name, are refused, before the fetch and at each redirect, which is
    followed by hand (`maxRedirects: 0`, at most `MAX_REDIRECTS`). Results are cached. A failure
    or a refusal is a warning, never a failed capture.
 7. **Assemble.** `assemble` → `buildFrame` (`assemble.ts`) for each frame: `sanitizeDocument`,
@@ -401,7 +402,9 @@ sets a refused resource aside with a warning ending `; set aside`. core's `assem
 reading the token from the UI page (`tokenFromPage`) and waiting at most `ANSWER_TIMEOUT_MS`
 (120 s); when the server is not there, the archive is downloaded instead (`downloadName`). One
 save per tab runs at a time (`install`, `background.ts`); one not finished in `SAVE_TIMEOUT_MS`
-(5 minutes) is reported as failed, and the tab can be saved again.
+(5 minutes) is reported as failed (under the tab's URL, so the popup shows it) and aborted: it
+neither posts nor downloads after that, though a post already sent may still land. The tab can
+then be saved again.
 The extension makes no poster frames: a video saved from Chrome keeps its own poster, or none.
 
 ## Limits, as built

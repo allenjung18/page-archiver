@@ -59,14 +59,17 @@ describe("the service worker", () => {
     vi.useFakeTimers();
     try {
       const f = fakeChrome();
-      const save = install(f.c, {} as never);
-      vi.mocked(saveTab).mockImplementationOnce(() => new Promise(() => undefined));
+      const save = install(f.c, { tabs: { get: async (id: number) => ({ id, url: "https://t.test/slow" }) } } as never);
+      let signal: AbortSignal | undefined;
+      vi.mocked(saveTab).mockImplementationOnce((e) => ((signal = e.signal), new Promise(() => undefined)));
       let first: unknown;
       void save(4, []).then((r) => (first = r));
       await vi.advanceTimersByTimeAsync(5 * 60_000 - 100);
       expect(first, "the bound is five minutes, not less").toBeUndefined();
       await vi.advanceTimersByTimeAsync(200);
-      expect(first, "the tab's save still pending").toMatchObject({ kind: "failed", error: "the save did not finish in 5 minutes" });
+      expect(first, "the tab's save still pending").toMatchObject({ kind: "failed", url: "https://t.test/slow", error: "the save did not finish in 5 minutes" });
+      expect((f.c.storage.session as ReturnType<typeof memoryStore>).data["result:4"], "stored for the popup, under the tab's URL").toMatchObject({ kind: "failed", url: "https://t.test/slow" });
+      expect(signal?.aborted, "the given-up save is told to stop").toBe(true);
       expect(f.badges.at(-1)).toEqual({ tabId: 4, text: "!" });
       const calls = vi.mocked(saveTab).mock.calls.length;
       await expect(save(4, [])).resolves.toMatchObject({ kind: "saved" });
