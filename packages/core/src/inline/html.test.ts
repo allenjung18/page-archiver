@@ -624,7 +624,8 @@ describe("inlineDocument: an SVG <set> or <animate> that writes into a URL attri
     const { doc, out, warnings } = await run(
       `<svg><image href="/a.png"><set id="s" attributeName="href" to="/b.png"/>` +
         `<animate id="m" attributeName="xlink:href" values="/c.png; http://cdn.test/d.png;#own;data:,x;" from="/e.png" by="/f.png"/></image>` +
-        `<filter><feImage id="fe" href="/a.png"/></filter><set id="t" href="#fe" attributeName="href" to="/b.png"/></svg>`,
+        `<filter><feImage id="fe" href="/a.png"/></filter><set id="t" href="#fe" attributeName="href" to="/b.png"/>` +
+        `<image href="/a.png"><set id="e" href="" attributeName="href" to="/b.png"/></image></svg>`,
       { "http://site.test/a.png": PNG, "http://site.test/b.png": PNG, "http://site.test/c.png": PNG, "http://cdn.test/d.png": PNG, "http://site.test/e.png": PNG },
     );
     expect(getAttr(byId(doc, "s"), "to")).toBe(PNG_URI);
@@ -636,6 +637,7 @@ describe("inlineDocument: an SVG <set> or <animate> that writes into a URL attri
     expect(getAttr(byId(doc, "m"), "by")).toBe("data:,");
     expect(getAttr(byId(doc, "m"), `${UNFETCHED_ATTRIBUTE_PREFIX}by`)).toBe("http://site.test/f.png");
     expect(getAttr(byId(doc, "t"), "to"), "the <feImage> its href names").toBe(PNG_URI);
+    expect(getAttr(byId(doc, "e"), "to"), "an empty href animates the parent").toBe(PNG_URI);
     expect(live(out)).toEqual([]);
     expect(warnings).toEqual([]);
   });

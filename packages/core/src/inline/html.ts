@@ -566,10 +566,10 @@ function animatedKind(el: Element): { name: string; kind: "href" | "ref" | "imag
   return null;
 }
 
-/** The element an animation animates: the one its href names (`#id`, in its own tree), else its parent. */
+/** The element an animation animates: the one its href names (`#id`, in its own tree), else (no href, or an empty one, as in Chromium) its parent. */
 function animationTarget(el: Element): Element | null {
   const href = svgHref(el);
-  if (href === null) {
+  if (href === null || href === "") {
     const parent = el.parentNode;
     return parent && isElement(parent) ? parent : null;
   }
