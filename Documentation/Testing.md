@@ -38,7 +38,10 @@ the depth cap (`deep-frames`), an `@import` chain, an `@import` written with CSS
 (`escaped-import`), `url()` and `image-set()` names written with CSS escapes (`escaped-url`), `url()`s
 and `image-set()` strings in the shapes only the CSS tokenizer reads (left open at the end of a
 `<style>` or a `style` attribute, a backslash-newline in a string, a comment before the `)`, a
-no-break or ideographic space in an unquoted one; `css-tokenizer-edges`), lazy images,
+no-break or ideographic space in an unquoted one; `css-tokenizer-edges`), a custom property's
+string that `var()` brings into an `image-set()` (a `style` attribute, a `<style>`, `:root`, a
+relative one in a linked sheet, and the strings that must be kept as written: a `content` value, a
+font name, an image used only on `:hover`; `var-image-set`), lazy images,
 external references (`<object>`, `<embed>` and SVG `<use>` of a sprite file, in
 `fixtures/pages/sprites/`), SVG effects and paints from another file, an SVG `cursor` image and
 `image-set()` strings (`svg-effects`), SVG `<set>` and `<animate>` elements that write a URL

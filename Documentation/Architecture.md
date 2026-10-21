@@ -133,11 +133,27 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   and are left as they came. Comments, strings and a bad url's remnants are read past as the
   tokenizer reads them, so a `url(` or a quote in one is not a `url()` and hides nothing after it.
   `parseImport` and the `setImportsAside` fallback read an `@import`'s URL the same way.
+- A string in a custom property (`--u: "a.png"`, or an `@property`'s `initial-value`) is fetched
+  as a `url()` is when `var()` brings it into an `image-set()` (`image-set(var(--u) 1x)`), so a
+  string in a custom property's value is inlined too (`inlineCustomPropertyStrings`,
+  `customPropertyStrings`), in a sheet, a `style` attribute and a sheet postcss cannot parse, but
+  only when its URL, resolved against the sheet it is written in, is one the browser fetched while
+  the page loaded (`ctx.fetched`): then it becomes a `data:` URI string, or, when the bytes cannot
+  be had, `"data:"` and a comment with its URL. Any other string is kept as written: a custom
+  property holds font names and `content` text as often as images, and only the browser's fetch
+  tells them apart. Both capture paths pass `fetched`: `capture()` (the CLI and the server) from
+  the recorder (a response with a 2xx status), the extension from each frame's resource timing
+  entries. A caller that passes none (`inlineDocument` or `inlineCss` called directly) keeps
+  every such string as written. So an image a custom property names that the page did not load (one used
+  only on `:hover`, or one whose fetch failed live) stays a live URL, and an archive opened from
+  disk with no CSP fetches it if that rule applies; served by the library, the CSP refuses it.
 - `img src` (with `srcset`, `sizes`, `loading` removed), `input type=image`, `video poster`,
   SVG `<image>`/`<feImage>` `href`, and `background` become `data:` URIs (`inlineAttr`); one that
   cannot be had is set aside and reported.
 - **Set aside** (D-516): a resource the capture cannot have (an HTTP error, a cap) never stays a
-  live reference, so no archive asks the network for anything, even opened from disk with no CSP.
+  live reference, so an archive opened from disk with no CSP asks the network for nothing the page
+  loaded (the one live URL that can remain is a custom property's string the page never fetched,
+  above).
   That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes, an SVG `cursor` and
   the values an SVG `<set>` or `<animate>` writes into any of those URL attributes too (below), and for
   a `url()` or `image-set()` whose name is written with CSS escapes or that is written in any shape
