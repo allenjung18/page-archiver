@@ -42,7 +42,11 @@ no-break or ideographic space in an unquoted one; `css-tokenizer-edges`), a cust
 string that `var()` brings into an `image-set()` (a `style` attribute, a `<style>`, `:root`, a
 relative one in a linked sheet, one that answers 404 live and is set aside, and the strings that
 must be kept as written: a `content` value, a font name, the page's own file name, an image used
-only on `:hover`; `var-image-set`), lazy images,
+only on `:hover`; `var-image-set`), a string a substitution brings into an `image-set()` (a `var()`
+fallback in a `<style>` and a `style` attribute, nested too, an `if()` branch, an `@function`'s
+result and argument (in an `image-set()` and in a call whose result holds one), an `@property`'s `initial-value` behind an escaped at-rule or descriptor name
+or in a sheet postcss cannot parse, and an SVG `mask`'s `image-set()` image, in the attribute and
+in a `<set>`; `substitution-image-set`), lazy images,
 external references (`<object>`, `<embed>` and SVG `<use>` of a sprite file, in
 `fixtures/pages/sprites/`), SVG effects and paints from another file, an SVG `cursor` image and
 `image-set()` strings (`svg-effects`), SVG `<set>` and `<animate>` elements that write a URL

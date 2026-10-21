@@ -72,10 +72,10 @@ stamps the file with `page-archiver:*` metas (source URL, capture time, tool ver
 a sha256 of the file). A resource that cannot be had (the site answers an error, or it is over a
 size cap) is set aside: its URL moves into a `data-page-archiver-unfetched-*` attribute or a CSS
 comment, and a warning names it, so the archive opened straight from disk asks the network
-for nothing the page loaded. One kind of URL is kept as written: a string in a CSS custom
-property that the page did not ask for while it was saved (an image `var()` brings into an
-`image-set()` only on `:hover`, say), because nothing else tells it from a font name or `content`
-text. Opened from disk, the archive fetches it if that rule ever applies; served by the library,
+for nothing the page loaded. One kind of URL is kept as written: a string that a CSS custom
+property, a `var()` fallback or an `if()` branch may bring into an `image-set()` and that the page
+did not ask for while it was saved (an image used only on `:hover`, or a branch the page did not
+take, say), because nothing else tells it from a font name or `content` text. Opened from disk, the archive fetches it if that rule ever applies; served by the library,
 its CSP refuses the request.
 
 Video and audio files are not archived: they are often hundreds of megabytes, streamed in

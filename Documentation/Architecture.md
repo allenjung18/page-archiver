@@ -134,31 +134,44 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   tokenizer reads them, so a `url(` or a quote in one is not a `url()` and hides nothing after it.
   `parseImport` and the `setImportsAside` fallback read an `@import`'s URL the same way.
 - A string in a custom property (`--u: "a.png"`, or an `@property`'s `initial-value`) is fetched
-  as a `url()` is when `var()` brings it into an `image-set()` (`image-set(var(--u) 1x)`), so a
-  string in a custom property's value is inlined too (`inlineCustomPropertyStrings`,
-  `customPropertyStrings`), in a sheet, a `style` attribute and a sheet postcss cannot parse, but
+  as a `url()` is when `var()` brings it into an `image-set()` (`image-set(var(--u) 1x)`). So is
+  one written inside a substitution function in an `image-set()` (scanImageSet's `substituted`):
+  a `var()`, `env()`, `attr()` or `inherit()` fallback (`image-set(var(--nope, "a.png") 1x)`,
+  nested too), an `if()` branch, a custom function's argument (`image-set(--pass("a.png") 1x)`),
+  and an `@function`'s `result` or a default in its prelude, which `image-set(--img() 1x)` brings
+  in. So is a string directly in a custom function's call anywhere in a value (or in a `var()`
+  fallback in one), `background-image: --wrap("a.png")`, since its result may put it in an
+  `image-set()`; a string in a `type()` or an `if()`'s `style()` condition is not one. An `@property` and an
+  `@function` are known by their at-rule's name and a descriptor by its name, escapes decoded as
+  Chromium decodes them (`@p\72operty`, which postcss names `p`; `@\70roperty`, which postcss
+  cannot parse; `initial-v\61lue`), and in a sheet postcss cannot parse the reader tracks which
+  at-rule's block it is in. Each such string is inlined too (`inlineCustomPropertyStrings`,
+  `customPropertyStrings` and its `StringScope`), in a sheet, a `style` attribute and a sheet
+  postcss cannot parse, but
   only when its URL, resolved against the sheet it is written in, is one the browser asked for
   while the page loaded: an image it fetched (`ctx.fetched`, and an image type, since `"/"` or
   `"app.css"` names the page or a sheet the browser did fetch) becomes a `data:` URI string, and
   one it asked for whose bytes cannot be had (`ctx.requested`: an HTTP error live, or a cap)
   becomes `"data:"` and a comment with its URL. Any other string is kept as written: a custom
-  property holds font names and `content` text as often as images, and only the browser's fetch
-  tells them apart. `capture()` (the CLI and the server) passes `fetched` from the recorder (a 2xx
+  property holds font names and `content` text as often as images, a fallback or an `if()` branch
+  may never be the value, and only the browser's fetch tells them apart. `capture()` (the CLI and the server) passes `fetched` from the recorder (a 2xx
   response) and `requested` from it too (any response). The extension passes `fetched` from each
   frame's resource timing entries, which hold an HTTP error too (its own fetch of one then fails
   and sets it aside); that buffer keeps 250 entries unless a page enlarges it, and a page can
   clear it, so on a page past 250 resources an image loaded after it filled is not seen and its
   string is kept as written. A caller that passes no `fetched` (`inlineDocument` or `inlineCss`
-  called directly) keeps every such string as written. So an image a custom property names that
-  the page did not load (one used only on `:hover`) stays a live URL, and an archive opened from
-  disk with no CSP fetches it if that rule applies; served by the library, the CSP refuses it.
+  called directly) keeps every such string as written. So an image a custom property, a fallback
+  or an `if()` branch names that the page did not load (one used only on `:hover`, a branch the
+  page did not take) stays a live URL, and an archive opened from disk with no CSP fetches it if
+  that value ever applies; served by the library, the CSP refuses it.
 - `img src` (with `srcset`, `sizes`, `loading` removed), `input type=image`, `video poster`,
   SVG `<image>`/`<feImage>` `href`, and `background` become `data:` URIs (`inlineAttr`); one that
   cannot be had is set aside and reported.
 - **Set aside** (D-516): a resource the capture cannot have (an HTTP error, a cap) never stays a
   live reference, so an archive opened from disk with no CSP asks the network for nothing the page
-  loaded (the one live URL that can remain is a custom property's string the page never fetched,
-  above).
+  loaded (the one live URL that can remain is a string a substitution may bring into an
+  `image-set()`, a custom property's, a fallback's or an `if()` branch's, that the page never
+  fetched, above).
   That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes, an SVG `cursor` and
   the values an SVG `<set>` or `<animate>` writes into any of those URL attributes too (below), and for
   a `url()` or `image-set()` whose name is written with CSS escapes or that is written in any shape
@@ -191,7 +204,11 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   as a `<use>`'s is, and the `url()` points at the copy. A `url()` naming the page itself (by its
   own URL, `pageUrl`, not its `<base>`) points at the page's own element (`url(#id)`). One that cannot be had is set aside with a warning: its
   URL in `data-page-archiver-unfetched-<name>`, the attribute left as the failed reference renders
-  (a `fill` or `stroke` keeps its fallback colour, else `none`).
+  (a `fill` or `stroke` keeps its fallback colour, else `none`). A string in an `image-set()`
+  in a `mask` names an image, not an element (`mask="image-set('m.png' 1x)"` is a mask image, as is the
+  same value a `<set attributeName="mask">` writes): it is inlined as a `data:` URI as a `style`
+  attribute's is, or, when it cannot be had, becomes `UNFETCHED_URL` (the mask is not made `none`)
+  with its URL in `data-page-archiver-unfetched-<name>`.
 - **SVG `url()` attributes that name an image** (`inlineSvgImageAttr`, `SVG_IMAGE_ATTRIBUTES`): an
   SVG element's `cursor` (`url(cur.png) 4 4, auto`) has each `url()` inlined as a `data:` URI, as a
   `style` attribute's are, never copied in as an element. One that cannot be had becomes
