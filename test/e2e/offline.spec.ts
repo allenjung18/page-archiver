@@ -242,6 +242,8 @@ const FIXTURES: Record<string, Fixture> = {
     },
   },
   "var-image-set": {
+    // the custom property's image that answers 404 live is set aside, as a url() of one is
+    warnings: [/^http:\/\/127\.0\.0\.1:\d+\/img\/missing\.png\?vi-404: HTTP 404; set aside$/],
     withoutCsp: true,
     check(html) {
       // a string in a custom property that var() brings into an image-set() is fetched as a url()
@@ -249,9 +251,11 @@ const FIXTURES: Record<string, Fixture> = {
       // <style>, :root, and the linked sheet's relative one, resolved against that sheet)
       for (const tag of ["vi-attr", "vi-style", "vi-root", "vi-sheet"]) expect(html, tag).not.toContain(tag);
       expect(count(html, /--[\w-]+:\s*(?:&quot;|"|')data:image\/png;base64,/g)).toBe(4);
-      // a string the page never fetched is kept as written: a content value, a font name, and
-      // an image used only on :hover
+      expect(html).toMatch(/--gone: "data:" \/\* page-archiver unfetched: http:\/\/127\.0\.0\.1:\d+\/img\/missing\.png\?vi-404 \*\//);
+      // a string that is not an image is kept as written: a content value, a font name, the
+      // page's own file name (fetched, but not an image), and an image used only on :hover
       expect(html).toContain('--label: "Kept as written"');
+      expect(html).toContain('--self: "var-image-set.html"');
       expect(html).toContain('--face: "Georgia"');
       expect(html).toMatch(/--later: "http:\/\/127\.0\.0\.1:\d+\/img\/lazy-6\.png\?vi-hover"/);
     },

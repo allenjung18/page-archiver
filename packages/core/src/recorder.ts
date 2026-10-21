@@ -48,6 +48,8 @@ export interface Recorder {
   urls(): string[];
   /** True when a successful response for url was recorded (no body is read). */
   has(url: string): boolean;
+  /** True when any response for url was recorded, an HTTP error too (no body is read). */
+  saw(url: string): boolean;
   /** Body bytes handed out so far. */
   bytesRead(): number;
   /** Stops recording. Lookups keep working while the page is open. */
@@ -116,6 +118,10 @@ export function createRecorder(page: ResponseSource, opts: RecorderOptions = {})
       const key = resourceKey(url);
       const entry = entries.get(aliases.get(key) ?? key);
       return !!entry && ok(entry.status);
+    },
+    saw(url) {
+      const key = resourceKey(url);
+      return entries.has(aliases.get(key) ?? key);
     },
     bytesRead: () => total,
     stop: () => void page.off("response", onResponse),

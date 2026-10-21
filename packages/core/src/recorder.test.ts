@@ -60,6 +60,10 @@ describe("recorder", () => {
     expect(rec.has("http://a.test/missing.woff")).toBe(false);
     expect(rec.has("http://a.test/start.woff2")).toBe(true);
     expect(rec.has("http://a.test/never")).toBe(false);
+    // saw: any response, an HTTP error too
+    expect(rec.saw("http://a.test/missing.woff")).toBe(true);
+    expect(rec.saw("http://a.test/start.woff2#y")).toBe(true);
+    expect(rec.saw("http://a.test/never")).toBe(false);
   });
 
   it("is a miss for a URL it never saw, and ignores data: and redirects", async () => {

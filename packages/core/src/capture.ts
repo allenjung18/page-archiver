@@ -167,7 +167,7 @@ export async function capture(url: string, opts: CaptureOptions = {}): Promise<A
       },
     });
 
-    const assembled = await assemble({ tree, sourceUrl: parsed.href, capturedAt, resolver, fetched: (u) => recorder.has(u), warnings });
+    const assembled = await assemble({ tree, sourceUrl: parsed.href, capturedAt, resolver, fetched: (u) => recorder.has(u), requested: (u) => recorder.saw(u), warnings });
     recorder.stop();
     const { doc, html, sha256, summary, built, canonicalUrl: canonical } = assembled;
     const all = assembled.warnings;

@@ -7,7 +7,7 @@
 import postcss, { type AtRule, type ChildNode, type Declaration, type Root } from "postcss";
 import { utf8 } from "../bytes.ts";
 import type { Resource } from "../resources.ts";
-import { toDataUri } from "./datauri.ts";
+import { effectiveMime, toDataUri } from "./datauri.ts";
 import { pruneFontSrc, type FontFilter } from "./fonts.ts";
 
 /** Where inlining gets bytes from (the capture's resolver), and where it reports. */
@@ -18,6 +18,12 @@ export interface CssContext {
   fonts?: FontFilter | undefined;
   /** True when the browser fetched this URL while the page loaded (narrows a font's src list). */
   fetched?: ((url: string) => boolean) | undefined;
+  /**
+   * True when the browser asked for this URL while the page loaded, whatever the answer (an HTTP
+   * error too): a custom property's string it asked for and could not have is set aside. `fetched`
+   * stands in when absent.
+   */
+  requested?: ((url: string) => boolean) | undefined;
   /**
    * The document is in quirks mode (no standards doctype): a browser then applies a same-origin
    * sheet whatever its type, and a data: sheet is same-origin, so a `data:,…` sheet styles the page.
@@ -545,24 +551,29 @@ export function customPropertyStrings(text: string, list: boolean): CssRef[] {
 }
 
 /**
- * Replaces each string of a custom property in text (customPropertyStrings) that names a URL the
- * browser fetched while the page loaded (ctx.fetched) with a data: URI string of what it fetched;
- * one the browser fetched whose bytes cannot be had is set aside, as "data:" and a comment with
- * its URL. Any other string is kept as written: a custom property holds font names and `content`
- * text as often as images, and only the browser's fetch tells them apart. With no ctx.fetched
- * (a caller that did not record the page's loads), every string is kept as written.
+ * Replaces each string of a custom property in text (customPropertyStrings) that names an image the
+ * browser fetched while the page loaded (ctx.fetched) with a data: URI string of it; one the browser
+ * asked for (ctx.requested) whose bytes cannot be had (an HTTP error, a cap) is set aside, as
+ * "data:" and a comment with its URL. Any other string is kept as written, a resource that is not
+ * an image too ("/" names the page itself): a custom property holds font names and `content` text
+ * as often as images, and only the browser's fetch and the image's type tell them apart. With no
+ * ctx.fetched (a caller that did not record the page's loads), every string is kept as written.
  */
 export async function inlineCustomPropertyStrings(text: string, base: string, ctx: CssContext, list: boolean): Promise<string> {
   const fetched = ctx.fetched;
   if (!fetched || !/["']/.test(text)) return text;
+  const requested = ctx.requested ?? fetched;
   const refs = customPropertyStrings(text, list);
   if (!refs.length) return text;
   const replacements = await Promise.all(
     refs.map(async (r) => {
       const url = resolveCssUrl(r.raw, base);
-      if (!url || !fetched(url)) return text.slice(r.index, r.index + r.length);
+      const asWritten = text.slice(r.index, r.index + r.length);
+      if (!url || !(fetched(url) || requested(url))) return asWritten;
       const res = await ctx.get(url);
-      return res ? `"${toDataUri(res.bytes, res.mime)}"` : `"data:" /*${unfetchedNote("", url)}*/`;
+      if (!res) return `"data:" /*${unfetchedNote("", url)}*/`;
+      // an image-set() takes only images: a string that names the page or a sheet is text
+      return effectiveMime(res.mime, res.bytes).startsWith("image/") ? `"${toDataUri(res.bytes, res.mime)}"` : asWritten;
     }),
   );
   let out = "";

@@ -137,15 +137,20 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   as a `url()` is when `var()` brings it into an `image-set()` (`image-set(var(--u) 1x)`), so a
   string in a custom property's value is inlined too (`inlineCustomPropertyStrings`,
   `customPropertyStrings`), in a sheet, a `style` attribute and a sheet postcss cannot parse, but
-  only when its URL, resolved against the sheet it is written in, is one the browser fetched while
-  the page loaded (`ctx.fetched`): then it becomes a `data:` URI string, or, when the bytes cannot
-  be had, `"data:"` and a comment with its URL. Any other string is kept as written: a custom
+  only when its URL, resolved against the sheet it is written in, is one the browser asked for
+  while the page loaded: an image it fetched (`ctx.fetched`, and an image type, since `"/"` or
+  `"app.css"` names the page or a sheet the browser did fetch) becomes a `data:` URI string, and
+  one it asked for whose bytes cannot be had (`ctx.requested`: an HTTP error live, or a cap)
+  becomes `"data:"` and a comment with its URL. Any other string is kept as written: a custom
   property holds font names and `content` text as often as images, and only the browser's fetch
-  tells them apart. Both capture paths pass `fetched`: `capture()` (the CLI and the server) from
-  the recorder (a response with a 2xx status), the extension from each frame's resource timing
-  entries. A caller that passes none (`inlineDocument` or `inlineCss` called directly) keeps
-  every such string as written. So an image a custom property names that the page did not load (one used
-  only on `:hover`, or one whose fetch failed live) stays a live URL, and an archive opened from
+  tells them apart. `capture()` (the CLI and the server) passes `fetched` from the recorder (a 2xx
+  response) and `requested` from it too (any response). The extension passes `fetched` from each
+  frame's resource timing entries, which hold an HTTP error too (its own fetch of one then fails
+  and sets it aside); that buffer keeps 250 entries unless a page enlarges it, and a page can
+  clear it, so on a page past 250 resources an image loaded after it filled is not seen and its
+  string is kept as written. A caller that passes no `fetched` (`inlineDocument` or `inlineCss`
+  called directly) keeps every such string as written. So an image a custom property names that
+  the page did not load (one used only on `:hover`) stays a live URL, and an archive opened from
   disk with no CSP fetches it if that rule applies; served by the library, the CSP refuses it.
 - `img src` (with `srcset`, `sizes`, `loading` removed), `input type=image`, `video poster`,
   SVG `<image>`/`<feImage>` `href`, and `background` become `data:` URIs (`inlineAttr`); one that

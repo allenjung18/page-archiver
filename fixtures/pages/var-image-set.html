@@ -8,18 +8,21 @@
      browser fetches it as it does a url(). Each box below is drawn by one, declared in a style
      attribute, a <style> (on the box, or on :root and used in another rule) or the linked sheet
      (a relative string, resolved against that sheet). Each must be inlined: opened from disk with
-     no CSP, the archive must make no request. The strings that are not images (a content value,
-     a font name, one used only on :hover, which the page never fetched) must be kept as written. -->
+     no CSP, the archive must make no request: one that failed live (a 404) is set aside. The
+     strings that are not images (a content value, a font name, the page's own file name, which the
+     browser did fetch, and one used only on :hover, which it never did) must be kept as written. -->
 <link rel="stylesheet" href="{{ASSETS}}/css/var-image-set.css">
 <style>
-  :root { --root-image: "{{ASSETS}}/img/lazy-3.png?vi-root"; --label: "Kept as written"; --face: "Georgia"; }
+  :root { --root-image: "{{ASSETS}}/img/lazy-3.png?vi-root"; --label: "Kept as written"; --face: "Georgia"; --self: "var-image-set.html"; }
   .grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
   .box { width: 200px; height: 80px; background-color: #d8e0c8; background-repeat: no-repeat; background-size: 200px 80px; }
   .n7 { --v: "{{ASSETS}}/img/lazy-2.png?vi-style"; background-image: image-set(var(--v) 1x); }
   .root { background-image: -webkit-image-set(var(--root-image) 1x); }
+  .missing { --gone: "{{ASSETS}}/img/missing.png?vi-404"; background-image: image-set(var(--gone) 1x); }
   .hover { --later: "{{ASSETS}}/img/lazy-6.png?vi-hover"; }
   .hover:hover { background-image: image-set(var(--later) 1x); }
   .label::after { content: var(--label); font-family: var(--face), serif; }
+  .label::before { content: var(--self) " / "; }
 </style>
 </head>
 <body>
@@ -32,6 +35,7 @@
       <div class="box n7"></div>
       <div class="box root"></div>
       <div class="box sheet"></div>
+      <div class="box missing"></div>
       <div class="box hover"></div>
       <p class="label"></p>
     </div>

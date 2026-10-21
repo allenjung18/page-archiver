@@ -458,10 +458,23 @@ describe("a custom property's string, which var() can bring into an image-set()"
     expect(asked).toEqual([]);
   });
 
-  it("sets aside a string the browser fetched whose bytes cannot be had", async () => {
+  it("sets aside a string the browser asked for whose bytes cannot be had: a cap, or an HTTP error live", async () => {
     const { ctx } = site({});
     ctx.fetched = FETCHED(["http://s.test/gone.png"]);
     expect(await inlineCss(`.x{--v:"gone.png"}`, "http://s.test/", ctx)).toBe(`.x{--v:"data:" /* page-archiver unfetched: http://s.test/gone.png */}`);
+    // a 404 live: the browser asked for it, and it is not a fetch that succeeded
+    ctx.requested = FETCHED(["http://s.test/gone.png", "http://s.test/404.png"]);
+    expect(await inlineCustomPropertyStrings(`--u:'404.png';--k:'kept.png'`, "http://s.test/", ctx, true)).toBe(
+      `--u:"data:" /* page-archiver unfetched: http://s.test/404.png */;--k:'kept.png'`,
+    );
+  });
+
+  it("keeps a string that names a fetched resource that is not an image: the page itself, a sheet", async () => {
+    const { ctx } = site({ "http://s.test/": "<!doctype html>", "http://s.test/app.css": ".a{}" });
+    ctx.fetched = FETCHED(["http://s.test/", "http://s.test/app.css"]);
+    const css = `:root{--sep:"/";--dot:".";--sheet:"app.css"}.crumb::after{content:var(--sep)}`;
+    expect(await inlineCss(css, "http://s.test/", ctx)).toBe(css);
+    expect(await inlineCustomPropertyStrings(`--bs-breadcrumb-divider:'/'`, "http://s.test/", ctx, true)).toBe(`--bs-breadcrumb-divider:'/'`);
   });
 
   it("reads only custom properties' values, and not a string a url() or an image-set() in one holds", () => {

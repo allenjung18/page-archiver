@@ -18,6 +18,8 @@ export interface BuildContext {
   resolver: Resolver;
   /** True when the browser fetched this URL while the page loaded (narrows a font's src list). */
   fetched?: ((url: string) => boolean) | undefined;
+  /** True when the browser asked for this URL while the page loaded, whatever the answer (an HTTP error too). */
+  requested?: ((url: string) => boolean) | undefined;
   warn: (message: string) => void;
   built: { removed: SanitizeReport; frames: number; fontFacesDropped: number };
 }
@@ -34,7 +36,7 @@ export async function buildFrame(capture: FrameCapture, ctx: BuildContext): Prom
   ctx.built.removed.elements += removed.elements;
   ctx.built.removed.attributes += removed.attributes;
   const fonts = createFontFilter(snap.fonts);
-  await inlineDocument(doc, { baseUrl: snap.baseUrl, pageUrl: snap.url, get: (u) => ctx.resolver.get(u), warn: ctx.warn, fonts, fetched: ctx.fetched });
+  await inlineDocument(doc, { baseUrl: snap.baseUrl, pageUrl: snap.url, get: (u) => ctx.resolver.get(u), warn: ctx.warn, fonts, fetched: ctx.fetched, requested: ctx.requested });
   ctx.built.fontFacesDropped += fonts?.dropped ?? 0;
 
   for (const el of allElements(doc)) {
@@ -80,6 +82,8 @@ export interface AssembleOptions {
   capturedAt: Date;
   resolver: Resolver;
   fetched?: ((url: string) => boolean) | undefined;
+  /** True when the browser asked for this URL while the page loaded, whatever the answer (an HTTP error too). */
+  requested?: ((url: string) => boolean) | undefined;
   /** Warnings from before the snapshot (loading, settling, frames), first in the list. */
   warnings?: readonly string[] | undefined;
 }
@@ -101,7 +105,7 @@ export interface Assembled {
 export async function assemble(opts: AssembleOptions): Promise<Assembled> {
   const warnings = [...(opts.warnings ?? [])];
   const built = { removed: { elements: 0, attributes: 0 }, frames: 0, fontFacesDropped: 0 };
-  const doc = await buildFrame(opts.tree, { resolver: opts.resolver, fetched: opts.fetched, warn: (m) => warnings.push(m), built });
+  const doc = await buildFrame(opts.tree, { resolver: opts.resolver, fetched: opts.fetched, requested: opts.requested, warn: (m) => warnings.push(m), built });
   const all = [...warnings, ...opts.resolver.warnings];
   const tooBig = sizeWarning(utf8Length(serializeDocument(doc)));
   if (tooBig) all.push(tooBig);
