@@ -51,8 +51,10 @@ at run time so the extension's service worker can bundle it (`packages/core/src/
    first visible button of `DEFAULT_DISMISS_SELECTORS` in every frame (each consent manager's
    *reject* button is listed before its *accept* button). Then a scroll to the bottom in
    viewport steps (at most `MAX_SCROLL_STEPS`, 60), idle again, back to the top,
-   `document.fonts.ready`, and every image decoded (5 s cap). An idle cap that runs out, a
-   selector that never came, or a scroll that hit the step limit is a warning.
+   `document.fonts.ready` (at most `FONTS_CAP_MS`, 5 s: a web font that starts loading after
+   `load` and never answers would otherwise hold the capture open), and every image decoded
+   (5 s cap). An idle cap that runs out, a selector that never came, fonts not ready in time, or
+   a scroll that hit the step limit is a warning.
 4. **Poster frames.** `capturePosterFrames` (`posters.ts`) screenshots each visible `<video>`
    in every frame, open shadow roots included (at most `MAX_POSTER_FRAMES`, 20; each frame's
    loading videos get `VIDEO_READY_MS`, 3 s, to show a picture), puts back the scroll position
@@ -69,8 +71,14 @@ at run time so the extension's service worker can bundle it (`packages/core/src/
    and `warnings`.
 6. **Resolve.** `createResolver` (`resources.ts`) answers each resource from the recorder first;
    a miss (or an unusable recording that can be fetched again) is fetched through
-   `page.context().request` with the page's cookies (the `fallback` in `capture`). Results are
-   cached. A failure is a warning, never a failed capture.
+   `page.context().request` with the page's cookies (`fetchForPage`, the `fallback` in
+   `capture`). That fetch runs from Node, outside the browser's private-network checks, so every
+   hop is checked first by `refusal` (`hosts.ts`, the same rules as the extension's, below): a
+   loopback, private-network, link-local or unspecified host other than the page's own, and the
+   library server (`CaptureOptions.server`, which `pa save` and the server set to the server's
+   address) by any loopback name, are refused, before the fetch and at each redirect, which is
+   followed by hand (`maxRedirects: 0`, at most `MAX_REDIRECTS`). Results are cached. A failure
+   or a refusal is a warning, never a failed capture.
 7. **Assemble.** `assemble` → `buildFrame` (`assemble.ts`) for each frame: `sanitizeDocument`,
    then `inlineDocument` (below), then each captured child frame built the same way and written
    into its `<iframe>` as `srcdoc`. A `<frame>` in a frameset is left empty with a warning.
@@ -263,7 +271,10 @@ quirks-mode page (`CssContext.quirks`, from the archive's own doctype) applies a
 any type, so there every one is inlined. An `@import` or `url()` that cannot be
 had is set aside (above). CSS that does not parse keeps its text with `url()`s inlined, every
 `@import` in it set aside as a comment (`setImportsAside`, which reads past comments and
-strings), and a warning. An at-rule's name is read as Chromium reads it, its CSS escapes decoded
+strings), and a warning. An imported sheet that does not parse is the exception: it would become
+rules in the sheet that imports it, where its text (an unclosed block) would swallow the rules
+after it, so it is dropped with its `@import`, nothing it names is fetched, and a comment
+(`page-archiver dropped @import: <url>`) and a warning say so. An at-rule's name is read as Chromium reads it, its CSS escapes decoded
 (`identAt`): `@\69mport`, which postcss cannot parse, is set aside, and `@i\6dport`, which postcss
 reads as an at-rule `i`, is renamed `import` (`unescapeImportName`) and inlined as any `@import`.
 A function's name is read the same way, whole (`myurl(` is not a `url(`) and decoded (`\75rl(` is),
@@ -323,22 +334,34 @@ comment (`readSingleFileHeader`) or, for a file page-archiver made itself, from 
 - **Where** (`resolveLibraryDir`, `layout.ts`): `--library <dir>`, else `$PA_LIBRARY`
   (`LIBRARY_ENV`), else `~/Archive/pages` (`DEFAULT_LIBRARY_DIR`).
 - **Folders** (`captureFolder`): `YYYY/MM/<slug>-<id>/` in the UTC month of capture, `slugify`
-  of the title. A folder without `meta.json` is an unfinished capture and is passed over
+  of the title. A capture time outside the years 1000 to 9999 (`captureDate`, `import.ts`) is no
+  time: a SingleFile header's or a stamp's is replaced by the file's own, and `captureFolder` and
+  `meta.json`'s check refuse one, since the scan reads four-digit year folders only. A folder without `meta.json` is an unfinished capture and is passed over
   (`scanLibrary`, `listCaptureFolders`, `readCaptureFolder`).
 - **Index** (`db.ts`): `library.db` (`DB_FILE`), a pages table and an FTS5 table over
   `FTS_COLUMNS` (title, byline, site, text). It is never the record: `rebuildIndex` builds it
   from the folders in place, in one transaction, and `ensureIndex` does so on open when it is
-  missing, outdated (`SCHEMA_VERSION`) or unreadable. The indexed text is the reader copy's
-  article, or the archive's visible text when there is no reader copy (`readerText`,
-  `archiveText`, `text.ts`; capped at `MAX_TEXT`, 2 MB).
+  missing, outdated (`SCHEMA_VERSION`) or unreadable. A current index is opened with no lock (a
+  read-only command never waits for a writer). A rebuild scans the folders before it takes the
+  write lock (`BEGIN IMMEDIATE`), so the parse of every capture holds up no other writer, and
+  then checks the folders again by a stat each: a row whose folder appeared after the scan is
+  kept, a scanned folder removed since is dropped. A writer waits `BUSY_TIMEOUT_MS` (10 s) for
+  the lock. The indexed text is the reader copy's article, or the archive's visible text when
+  there is no reader copy (`readerText`, `archiveText`, `text.ts`; capped at `MAX_TEXT`, 2 MB).
+  The two private-use characters the server's snippet marks are made of (U+E000, U+E001) are
+  never indexed (`indexEntry`): an icon font draws its glyphs there.
 - **Search** (`search.ts`): `toFtsQuery` turns words into an FTS5 query (all words, `word*`,
-  `"phrases"`, `OR`); `searchPages` and `listPages` take `Filters` (site, tag, since, until,
-  all, limit); `findPage` takes an id or a unique prefix.
+  `"phrases"`, `OR`, `NOT` between two words); a stray `OR` or `AND` is dropped, but a `NOT` with
+  no word on each side is a `QueryError` (dropped, it would search for what it was meant to
+  exclude), and words mode has no `-word` exclusion. With `raw`, any `SQLITE_ERROR` the `MATCH`
+  raises is a `QueryError` (the query is its only user input). `searchPages` and `listPages` take
+  `Filters` (site, tag, since, until, all, limit); `findPage` takes an id or a unique prefix.
 - **Versions** (`versions.ts`): captures of one URL (`urlKey`: the fragment ignored) are its
   versions, numbered from the captures' URLs and times every time they are read
   (`VERSIONS_VIEW`, `versionsOf`, `previousVersion`), so a rebuilt index numbers them the same.
 - **Writes** (`openLibrary`, `library.ts`): `add` writes the folder first (`writeCapture`), then
-  indexes it; `tag` writes `meta.json` first (`writeAtomic`), then the index; `remove` renames
+  indexes it (an index write that fails says `saved to <dir>, but not indexed (...): pa reindex
+  adds it`); `tag` writes `meta.json` first (`writeAtomic`), then the index; `remove` renames
   the folder to a dot-name the scan never reads (one step), drops its rows, then deletes it.
 
 ## The server (`packages/server/src/`)
@@ -359,14 +382,15 @@ served under `UI_CSP`. Archives are served by `archiveResponse` (`serve-archive.
 
 `saveTab` (`save.ts`): `snapshotTab` injects `CONTENT_FILES` (the serializer IIFE and
 `content.ts`) into every frame; `createContentApi` (`content.ts`) marks child frames
-(`FRAME_ATTRIBUTE`) and snapshots each frame; `buildTree` (`tree.ts`) rebuilds the frame tree;
+(`FRAME_ATTRIBUTE`) and snapshots each frame (after `document.fonts.ready`, at most
+`FONTS_CAP_MS`, as core's capture waits); `buildTree` (`tree.ts`) rebuilds the frame tree;
 `fetchResource` fetches each resource from the service worker (host permission for every site,
 so no CORS), with the reader's cookies only for the page's own site (`credentialsFor`,
 `hosts.ts`: the same registrable domain, from the public suffix list in `tldts`); a fetch with
 cookies does not follow a redirect (`redirect: "manual"`), and a resource that redirects is
 fetched again without them, since the cookies would go with every hop. A page could
 otherwise name a resource on the reader's machine or network and have it inlined: `refusal`
-refuses, before the fetch and again after a redirect, a loopback, private-network, link-local
+(core's `hosts.ts`, shared with `pa save`'s fallback) refuses, before the fetch and again after a redirect, a loopback, private-network, link-local
 or unspecified address (`hostClass`: 127/8, `localhost`, ::1, 10/8, 172.16/12, 192.168/16,
 fc00::/7, 169.254/16, fe80::/10, 0/8, ::, and IPv4-mapped forms) unless it is the page's own
 host, any port (a page served locally keeps its assets on another port), and the library
@@ -375,7 +399,9 @@ sets a refused resource aside with a warning ending `; set aside`. core's `assem
 `node:crypto` replaced by a plain SHA-256 (`shims/node-crypto.ts`, `sha256.ts`). `deliver`
 (`server.ts`) posts it to `pa serve` at the address in the popup (`DEFAULT_SERVER`), pairing by
 reading the token from the UI page (`tokenFromPage`) and waiting at most `ANSWER_TIMEOUT_MS`
-(120 s); when the server is not there, the archive is downloaded instead (`downloadName`).
+(120 s); when the server is not there, the archive is downloaded instead (`downloadName`). One
+save per tab runs at a time (`install`, `background.ts`); one not finished in `SAVE_TIMEOUT_MS`
+(5 minutes) is reported as failed, and the tab can be saved again.
 The extension makes no poster frames: a video saved from Chrome keeps its own poster, or none.
 
 ## Limits, as built
@@ -386,9 +412,9 @@ The extension makes no poster frames: a video saved from Chrome keeps its own po
 - A resource the site will not give again (an HTTP error, a cap) is not in the archive: it is
   set aside, so an archive opened online does not show it either. The warning and the set-aside
   attribute or comment name the URL.
-- The extension refuses private hosts by the URL, not the address: a public host name that
-  resolves to a private address (`127.0.0.1.nip.io`, DNS rebinding) is fetched, since the
-  service worker never sees the address. `pa serve` refuses such a request by its `Host`, so the
+- The capture (`pa save`'s fallback, and the extension) refuses private hosts by the URL, not the
+  address: a public host name that resolves to a private address (`127.0.0.1.nip.io`, DNS
+  rebinding) is fetched, since neither the fallback nor the service worker checks the address. `pa serve` refuses such a request by its `Host`, so the
   token page is not among them. A
   resource on another site that needs the reader's cookies is fetched without them, so it may be
   refused and set aside.

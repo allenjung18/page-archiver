@@ -149,8 +149,10 @@ pa reindex
 pa import <file.html>... [--url <url>] [--tag <tag>]...
 ```
 
-- `search`: every word must match; `word*` matches a prefix, `"two words"` a phrase, and
-  `OR` between words either one. `--raw` passes SQLite FTS5 query syntax through. Each hit
+- `search`: every word must match; `word*` matches a prefix, `"two words"` a phrase,
+  `OR` between words either one, and `NOT` between two words leaves out pages with the second
+  (a `NOT` with no word on each side is refused; there is no `-word`). `--raw` passes SQLite
+  FTS5 query syntax through; one that is not valid FTS5 exits 2. Each hit
   shows a snippet with the matched words in `[brackets]`; the title weighs most, then
   byline and site, then the text. Exit status 1 when nothing matches.
 - `--site` matches the site's name or the URL's host, either without regard to case.

@@ -53,7 +53,9 @@ external references (`<object>`, `<embed>` and SVG `<use>` of a sprite file, in
 `image-set()` strings (`svg-effects`), SVG `<set>` and `<animate>` elements that write a URL
 attribute (`smil-urls`), link hints (fetch hints and touch icons), video and audio, a news article, a plain article,
 shadow DOM, a single-page app, `srcset`, resources the site answers with an error
-(`unfetched`), web fonts. `fixtures/import/` holds SingleFile saves for
+(`unfetched`), a hidden lazy image at another loopback name than the page's own host, which the
+capture must refuse to fetch (`private-host`, written with the fixture server's
+`{{ASSETS_LOCALHOST}}`), web fonts. `fixtures/import/` holds SingleFile saves for
 `pa import`. The binary assets are generated (`fixtures/make-images.ts`), or made as their
 `README.md` says (`fixtures/assets/media/README.md`).
 
