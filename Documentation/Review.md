@@ -5,9 +5,9 @@ captured with `npm run smoke` and opened offline, every failure traced to its ca
 documentation checked against the code, and a second reader's review of the resulting change. Each finding is **must-fix** (an archive that breaks
 the offline promise, or a test that reports something false), **should-fix**, or **consider**.
 
-Every must-fix item is fixed, and each fix has a test that fails without it (a fixture in
+Every must-fix item but 39 is fixed, and each fix has a test that fails without it (a fixture in
 `fixtures/pages/` with its `FIXTURES` entry in `test/e2e/offline.spec.ts`, or a harness test).
-**Open must-fix items: none.**
+**Open must-fix items: 39** (below the fixed ones).
 
 ## Smoke results
 
@@ -25,7 +25,7 @@ the day, the site also answered 48 of its own and its partners' fonts and icons 
 so its archive lacks them (a 100% difference: the page height changed); its miss reason says
 so. That is the site refusing a headless browser, recorded, not worked around.
 
-## Must-fix (all fixed)
+## Must-fix (fixed)
 
 | # | Seen on | What went wrong | Fix | Test that fails without it |
 |---|---|---|---|---|
@@ -56,6 +56,12 @@ so. That is the site refusing a headless browser, recorded, not worked around.
 The fixes were each shown to matter: with the change undone, its test fails on its own
 assertion, and passes again with the change restored.
 
+## Must-fix (open)
+
+| # | Seen on | What goes wrong | Fix to make | Test to add |
+|---|---|---|---|---|
+| 39 | finish2 review of the docs (row 38) | a string a substitution brings into an `image-set()` whose response declared a type that is not an image's stays live: `.b{--u:"http://host/a.png?ct=text/html";background-image:image-set(var(--u) 1x)}`, a PNG served as `text/html` (or `application/json`). The page fetched it, but `customPropertyStrings`'s caller (`inline/css.ts`) inlines a fetched string only when `effectiveMime` (`inline/datauri.ts`) says `image/`, and a declared type that is not generic wins over sniffing, so it is kept as written. Opened from disk with no CSP: 1 request each (probe, a1a27ab) | read the bytes when the declared type is not an image's: inline the string when `sniffMime` finds an image signature, keep it when it does not (the page or a sheet a string names) | a fixture shape served with `text/html` and with `application/json`, red with 1 request each from disk with no CSP |
+
 ## Not a page-archiver bug
 
 | # | Seen on | What | Done |
@@ -63,7 +69,7 @@ assertion, and passes again with the change restored.
 | 6 | mdn | the expected text was wrong: the page's heading is "HTML image embed element" | the list corrected |
 | 7 | substack, recipe | resources the site answers with an HTTP error (an avatar; ad-sync pixels) are kept as links, as designed and reported in the capture's warnings, so the archive refers to the network and the CSP refuses it | both pages recorded as misses with that reason, and the report counted these violations apart; consider 18 then removed both the misses and that split (d3273f7) |
 | 8 | README, `library.spec.ts` | both said the library test uses 20 fixture pages; the count follows `fixtures/pages/` | both now say every fixture page; the spec asserts at least 20 |
-| 38 | README, Architecture.md (finish2 review of C-12) | the offline claim was wider than the code: README and Architecture's Set aside said an archive opened from disk asks the network for nothing the page loaded, which was false at 16442e7 (12 requests from disk with no CSP, one per shape of must-fix 37), and both still leave out the extension's case: it knows what the page loaded from resource timing (250 entries by default), so past that a substitution's string naming an image the page loaded is kept as written. The live URL they named was "a custom property, a `var()` fallback or an `if()` branch" the page "never fetched" (a string the page asked for and could not have is set aside, not kept), and "an SVG attribute alike" read as if every SVG `url()` attribute had its `image-set()` strings inlined | at a1a27ab the 12 shapes make 0 requests from disk (the `substitution-image-set` fixture); README and Architecture now name the extension's case, list every substitution (an `env()` or `attr()` fallback and a custom function too), say "did not ask for", and say only a `mask` and a `cursor` have an `image-set()` read |
+| 38 | README, Architecture.md (finish2 review of C-12) | the offline claim was wider than the code: README and Architecture's Set aside said an archive opened from disk asks the network for nothing the page loaded, which was false at 16442e7 (the 13 shapes of must-fix 37 each fetched again from disk with no CSP). At a1a27ab it still leaves out three cases, each a string a substitution brings into an `image-set()` (`customPropertyStrings`, `inline/css.ts`): one whose response declared a type that is not an image's (`--u:"/a.png?ct=text/html"`: the page loaded it, the capture keeps it as written, and from disk with no CSP it is fetched again, 1 request; no type or `text/plain` is sniffed and inlined); in an extension save, one the page's resource timing does not hold (past 250 entries, or cleared by the page); and one that got no response (a host that does not answer). The docs named the kept string as one "the page never fetched" (a string the page got an error for is set aside, not kept; one with no response at all is kept), listed only a custom property, a `var()` fallback and an `if()` branch, and "an SVG attribute alike" read as if every SVG `url()` attribute had its `image-set()` strings inlined | at a1a27ab the reviewer's 12-shape probe makes 0 requests from disk with no CSP (12 before, at 16442e7), as does the 13-shape `substitution-image-set` fixture. README and Architecture now name each case above, say "got no response" for the kept string, list every substitution (an `@property`'s `initial-value`, an `env()`, `attr()` or `inherit()` fallback and a custom function too), and say only a `mask` and a `cursor` have an `image-set()` read. The non-image type case is documented, not fixed in this docs-only change: must-fix 39 (open) |
 
 ## From the second review (all fixed)
 

@@ -149,9 +149,11 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   at-rule's block it is in. Each such string is inlined too (`inlineCustomPropertyStrings`,
   `customPropertyStrings` and its `StringScope`), in a sheet, a `style` attribute and a sheet
   postcss cannot parse, but
-  only when its URL, resolved against the sheet it is written in, is one the browser asked for
-  while the page loaded: an image it fetched (`ctx.fetched`, and an image type, since `"/"` or
-  `"app.css"` names the page or a sheet the browser did fetch) becomes a `data:` URI string, and
+  only when its URL, resolved against the sheet it is written in, is one the browser got a
+  response for while the page loaded: an image it fetched (`ctx.fetched`, and an image type by
+  `effectiveMime`, since `"/"` or `"app.css"` names the page or a sheet the browser did fetch; a
+  declared type that is not an image's, a PNG served as `text/html` say, keeps the string as
+  written, while no type or `text/plain` is sniffed) becomes a `data:` URI string, and
   one it asked for whose bytes cannot be had (`ctx.requested`: an HTTP error live, or a cap)
   becomes `"data:"` and a comment with its URL. Any other string is kept as written: a custom
   property holds font names and `content` text as often as images, a fallback or an `if()` branch
@@ -161,20 +163,22 @@ anything, walking the live tree and the clone in step (`snapshot.ts`).
   and sets it aside); that buffer keeps 250 entries unless a page enlarges it, and a page can
   clear it, so on a page past 250 resources an image loaded after it filled is not seen and its
   string is kept as written. A caller that passes no `fetched` (`inlineDocument` or `inlineCss`
-  called directly) keeps every such string as written. So an image a custom property, a fallback
-  or an `if()` branch names that the page did not load (one used only on `:hover`, a branch the
-  page did not take) stays a live URL, and an archive opened from disk with no CSP fetches it if
-  that value ever applies; served by the library, the CSP refuses it.
+  called directly) keeps every such string as written. So an image a substitution names that got
+  no response while the page was saved (one used only on `:hover`, a branch the page did not take,
+  a host that did not answer, a request still pending when the recording stopped), or whose
+  response declared a type that is not an image's, stays a live URL, and an archive opened from
+  disk with no CSP fetches it if that value ever applies; served by the library, the CSP refuses it.
 - `img src` (with `srcset`, `sizes`, `loading` removed), `input type=image`, `video poster`,
   SVG `<image>`/`<feImage>` `href`, and `background` become `data:` URIs (`inlineAttr`); one that
   cannot be had is set aside and reported.
 - **Set aside** (D-516): a resource the capture cannot have (an HTTP error, a cap) never stays a
   live reference, so an archive opened from disk with no CSP asks the network for nothing the page
-  loaded (the one live URL that can remain is a string a substitution may bring into an
-  `image-set()`, a custom property's, a fallback's, an `if()` branch's or a custom function's,
-  that the page did not ask for while it was saved, or, in an extension save of a page past its
-  250 resource timing entries, one naming an image the page loaded that the extension did not
-  see; above).
+  loaded, with one kind of exception: a string a substitution may bring into an `image-set()`
+  (a custom property's, a fallback's, an `if()` branch's or a custom function's) stays live when
+  it got no response while the page was saved, when its response declared a type that is not an
+  image's (a PNG served as `text/html`: the page loaded it, and the archive fetches it again), or,
+  in an extension save, when the page's resource timing did not hold it (past 250 entries, or
+  cleared by the page), above.
   That holds for `<object>`, `<embed>`, SVG `<use>`, SVG `url()` attributes, an SVG `cursor` and
   the values an SVG `<set>` or `<animate>` writes into any of those URL attributes too (below), and for
   a `url()` or `image-set()` whose name is written with CSS escapes or that is written in any shape
