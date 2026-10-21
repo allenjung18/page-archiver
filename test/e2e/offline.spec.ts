@@ -254,6 +254,24 @@ const FIXTURES: Record<string, Fixture> = {
       expect(html, "no <use> names another file").not.toMatch(/<use\b[^>]*\shref="[^#]/);
     },
   },
+  "smil-urls": {
+    // an SVG <set>/<animate> whose attributeName is a URL attribute: its values run again when the archive opens
+    warnings: [/\/sprites\/gone\.png: HTTP 404; set aside$/],
+    withoutCsp: true,
+    check(html) {
+      expect(html, "no animation value names the network").not.toMatch(/\s(to|from|by|values)="[^"]*(https?:|\/img\/|\/sprites\/)/);
+      // the <image> and <feImage> hrefs' images are inlined; in a values list, with no ";" for Chromium to split at
+      expect(count(html, /attributeName="href" to="data:image\/png;base64,/)).toBe(2);
+      expect(html).toMatch(/attributeName="href" values="data:image\/png,%89PNG[^";]*;data:image\/png,%89PNG[^";]*"/);
+      // the image that answers HTTP 404 is set aside, as a value that fails without the network
+      expect(html).toMatch(/<set attributeName="xlink:href" to="data:," data-page-archiver-unfetched-to="http:\/\/127\.0\.0\.1:\d+\/sprites\/gone\.png">/);
+      // the <use>'s symbol, the filter and the cursor image are copied in or inlined
+      expect(html).toContain('attributeName="href" to="#page-archiver-sprite-0-star"');
+      expect(count(html, 'id="page-archiver-sprite-0-star"')).toBe(1);
+      expect(html).toMatch(/attributeName="filter" to="url\(#page-archiver-sprite-\d-soft\)"/);
+      expect(html).toMatch(/attributeName="cursor" to="url\(&quot;data:image\/png;base64,[^"&]+&quot;\) 2 2, pointer"/);
+    },
+  },
   "svg-effects": {
     // the cursor image and the paint file that are not there answer HTTP 404
     warnings: [/\/sprites\/gone-cursor\.png: HTTP 404; set aside$/, /\/sprites\/gone\.svg: HTTP 404; set aside$/],

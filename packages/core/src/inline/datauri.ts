@@ -43,6 +43,20 @@ export function toDataUri(bytes: Uint8Array, mime: string | undefined | null): s
   return `data:${type}${charset};base64,${base64(bytes)}`;
 }
 
+/** Bytes left as they are in toListDataUri: the URL unreserved characters. */
+const UNRESERVED = new Set([..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"].map((c) => c.charCodeAt(0)));
+
+/**
+ * A data: URI with no ";" in it, every other byte percent-encoded: what goes into an SVG
+ * animation's `values` list, which Chromium splits at every ";", so a base64 URI's ";base64" would
+ * cut it in two. About three times the bytes of a binary file, so only for that list.
+ */
+export function toListDataUri(bytes: Uint8Array, mime: string | undefined | null): string {
+  const parts: string[] = [];
+  for (const b of bytes) parts.push(UNRESERVED.has(b) ? String.fromCharCode(b) : `%${b.toString(16).toUpperCase().padStart(2, "0")}`);
+  return `data:${effectiveMime(mime, bytes)},${parts.join("")}`;
+}
+
 /** The encoded length of a base64 data: URI for n bytes, without building it. */
 export function dataUriLength(n: number, mime: string): number {
   return `data:${mime};base64,`.length + 4 * Math.ceil(n / 3);

@@ -315,12 +315,14 @@ export function imageSetStrings(text: string): CssRef[] {
  * string argument of an image-set(), with a data: URI of the resource it names. A resource that
  * cannot be had becomes UNFETCHED_URL, followed by a comment with its absolute URL, so the archive
  * still says where it was; or, given `unfetched`, what that returns for its URL and its place in text.
+ * `dataUri` makes the data: URI (toDataUri; an SVG animation's `values` list needs one with no ";").
  */
 export async function inlineUrls(
   text: string,
   base: string,
   ctx: CssContext,
   unfetched: (url: string, index: number) => string = (url) => `${UNFETCHED_URL} /*${unfetchedNote("", url)}*/`,
+  dataUri: (bytes: Uint8Array, mime: string) => string = toDataUri,
 ): Promise<string> {
   if (!hasCssRefs(text)) return text;
   const all = [...urlTokens(text), ...(/image-set\(|\\/i.test(text) ? imageSetStrings(text) : [])].sort((a, b) => a.index - b.index);
@@ -336,7 +338,7 @@ export async function inlineUrls(
       // in a data: sheet a relative URL fails live; left in the archive it would resolve against the file
       if (!url) return /^data:/i.test(base) && isRelativeRef(r.raw) ? UNFETCHED_URL : text.slice(r.index, r.index + r.length);
       const res = await ctx.get(url);
-      return res ? `url("${toDataUri(res.bytes, res.mime)}")` : unfetched(url, r.index);
+      return res ? `url("${dataUri(res.bytes, res.mime)}")` : unfetched(url, r.index);
     }),
   );
   let out = "";

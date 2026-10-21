@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dataUriLength, effectiveMime, normalizeMime, sniffMime, toDataUri } from "./datauri.ts";
+import { dataUriLength, effectiveMime, normalizeMime, sniffMime, toDataUri, toListDataUri } from "./datauri.ts";
 
 const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
 
@@ -42,5 +42,19 @@ describe("datauri", () => {
       const bytes = new Uint8Array(n).fill(1);
       expect(dataUriLength(n, "image/png"), String(n)).toBe(toDataUri(bytes, "image/png").length);
     }
+  });
+});
+
+describe("toListDataUri", () => {
+  it("percent-encodes every byte but the unreserved ones, so the URI has no ';' and decodes to the same bytes", async () => {
+    const bytes = Uint8Array.from([...PNG, 0x3b, 0x22, 0x28, 0x29, 0x27, 0x20, 0x25, 0x41, 0x7e, 0xff]);
+    const uri = toListDataUri(bytes, "image/png; charset=binary");
+    expect(uri.startsWith("data:image/png,%89PNG%0D%0A%1A%0A%00%00%00%0D%3B%22%28%29%27%20%25A~%FF")).toBe(true);
+    expect(uri).not.toMatch(/[;"'() ]/);
+    expect(new Uint8Array(await (await fetch(uri)).arrayBuffer())).toEqual(bytes);
+  });
+
+  it("sniffs a generic type as toDataUri does", () => {
+    expect(toListDataUri(PNG, "application/octet-stream").startsWith("data:image/png,")).toBe(true);
   });
 });

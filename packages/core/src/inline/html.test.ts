@@ -614,3 +614,90 @@ describe("inlineDocument: a url() or image-set() whose name is written with CSS 
     for (const id of ["grad", "dots"]) expect(out.split(`id="${SPRITE_ID_PREFIX}0-${id}"`), id).toHaveLength(2);
   });
 });
+
+describe("inlineDocument: an SVG <set> or <animate> that writes into a URL attribute", () => {
+  const SPRITE = { mime: "image/svg+xml", body: `<svg><symbol id="a"><use href="#c"><set attributeName="href" to="#d"/></use></symbol><symbol id="b"/><symbol id="c"/><symbol id="d"/><filter id="f"/></svg>` };
+  /** Every value attribute of every animation that still names the network. */
+  const live = (out: string) => out.match(/\s(to|from|by|values)="[^"]*(https?:|\/[\w-]+\.(png|svg))[^"]*"/g) ?? [];
+
+  it("inlines each image an <image> or <feImage> href animation writes, to, from, by and every one of values", async () => {
+    const { doc, out, warnings } = await run(
+      `<svg><image href="/a.png"><set id="s" attributeName="href" to="/b.png"/>` +
+        `<animate id="m" attributeName="xlink:href" values="/c.png; http://cdn.test/d.png;#own;data:,x;" from="/e.png" by="/f.png"/></image>` +
+        `<filter><feImage id="fe" href="/a.png"/></filter><set id="t" href="#fe" attributeName="href" to="/b.png"/></svg>`,
+      { "http://site.test/a.png": PNG, "http://site.test/b.png": PNG, "http://site.test/c.png": PNG, "http://cdn.test/d.png": PNG, "http://site.test/e.png": PNG },
+    );
+    expect(getAttr(byId(doc, "s"), "to")).toBe(PNG_URI);
+    // in a values list a data: URI has no ";": Chromium splits the list at every one
+    const LIST_URI = "data:image/png,%89PNG%0D%0A%1A%0A";
+    expect(getAttr(byId(doc, "m"), "values"), "a fragment, a data: URL and the empty last item are kept").toBe(`${LIST_URI};${LIST_URI};#own;data:,x;`);
+    expect(getAttr(byId(doc, "m"), "from")).toBe(PNG_URI);
+    // f.png cannot be had: set aside, as a value that fails without the network
+    expect(getAttr(byId(doc, "m"), "by")).toBe("data:,");
+    expect(getAttr(byId(doc, "m"), `${UNFETCHED_ATTRIBUTE_PREFIX}by`)).toBe("http://site.test/f.png");
+    expect(getAttr(byId(doc, "t"), "to"), "the <feImage> its href names").toBe(PNG_URI);
+    expect(live(out)).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("copies in the element a <use> href animation writes, and sets aside one the file does not have", async () => {
+    const { doc, out, warnings } = await run(
+      `<svg><use href="/icons.svg#a"><set id="s" attributeName="href" to="/icons.svg#b"/><animate id="m" attributeName="href" values="/icons.svg#zz;#own"/></use></svg>`,
+      { "http://site.test/icons.svg": SPRITE },
+    );
+    expect(getAttr(byId(doc, "s"), "to")).toBe(`#${SPRITE_ID_PREFIX}0-b`);
+    expect(getAttr(byId(doc, "m"), "values")).toBe("data:,;#own");
+    expect(getAttr(byId(doc, "m"), `${UNFETCHED_ATTRIBUTE_PREFIX}values`)).toBe("http://site.test/icons.svg#zz");
+    for (const id of ["a", "b", "c", "d"]) expect(out.split(`id="${SPRITE_ID_PREFIX}0-${id}"`).length - 1, id).toBe(1);
+    // the copy's own animation writes the copy's ids, not the page's
+    expect(out).toContain(`<set attributeName="href" to="#${SPRITE_ID_PREFIX}0-d">`);
+    expect(live(out)).toEqual([]);
+    expect(warnings).toEqual(['animate href http://site.test/icons.svg#zz: the file has no element with id "zz"; set aside']);
+  });
+
+  it("copies in a filter, mask or paint an animation writes, and inlines a cursor's image, setting aside what cannot be had", async () => {
+    const { doc, out } = await run(
+      `<svg><rect><set id="f" attributeName="filter" to="url(/icons.svg#f)"/>` +
+        `<animate id="p" attributeName="fill" values="url(http://cdn.test/gone.svg#p) #c33;url(#own);red" fill="freeze"/>` +
+        `<set id="c" attributeName="cursor" to="url(/cur.png) 2 2, url(/gone.png), pointer"/>` +
+        `<animate id="cl" attributeName="cursor" values="url(/cur.png), auto;pointer"/></rect></svg>`,
+      { "http://site.test/icons.svg": SPRITE, "http://site.test/cur.png": PNG },
+    );
+    expect(getAttr(byId(doc, "f"), "to")).toBe(`url(#${SPRITE_ID_PREFIX}0-f)`);
+    expect(getAttr(byId(doc, "p"), "values"), "the paint falls back to its colour, as it did live").toBe("#c33;url(#own);red");
+    expect(getAttr(byId(doc, "p"), `${UNFETCHED_ATTRIBUTE_PREFIX}values`)).toBe("http://cdn.test/gone.svg#p");
+    expect(getAttr(byId(doc, "p"), "fill"), "an animation's own fill is its timing").toBe("freeze");
+    expect(getAttr(byId(doc, "c"), "to")).toBe(`url("${PNG_URI}") 2 2, url("data:,"), pointer`);
+    expect(getAttr(byId(doc, "c"), `${UNFETCHED_ATTRIBUTE_PREFIX}to`)).toBe("http://site.test/gone.png");
+    expect(getAttr(byId(doc, "cl"), "values")).toBe(`url("data:image/png,%89PNG%0D%0A%1A%0A"), auto;pointer`);
+    expect(live(out)).toEqual([]);
+  });
+
+  it("makes an <a> href animation's link absolute and sets aside one whose target is not an image, a <use> or a link", async () => {
+    const { doc, warnings, requested } = await run(
+      `<svg><a><set id="a" attributeName="href" to="next.html"/></a>` +
+        `<linearGradient id="g"><set id="g2" attributeName="href" to="/other.svg#g"/></linearGradient>` +
+        `<set id="n" href="#nobody" attributeName="href" to="/x.png"/></svg>`,
+      {},
+    );
+    expect(getAttr(byId(doc, "a"), "to")).toBe("http://site.test/blog/next.html");
+    expect(getAttr(byId(doc, "g2"), "to")).toBe("data:,");
+    expect(getAttr(byId(doc, "n"), "to")).toBe("data:,");
+    expect(getAttr(byId(doc, "n"), `${UNFETCHED_ATTRIBUTE_PREFIX}to`)).toBe("http://site.test/x.png");
+    expect(requested).toEqual([]);
+    expect(warnings.sort()).toEqual(
+      ["set href http://site.test/other.svg#g: a <linearGradient> href is not archived; set aside", "set href http://site.test/x.png: animates no element of the page; set aside"].sort(),
+    );
+  });
+
+  it("leaves an animation of any other attribute, and an HTML <set>, alone", async () => {
+    const { doc, requested } = await run(
+      `<svg><rect><set id="w" attributeName="width" to="/x.png"/><animate id="h" attributeName="height" values="/x.png;/y.png"/></rect></svg><set id="html" attributename="href" to="/x.png"></set>`,
+      {},
+    );
+    expect(getAttr(byId(doc, "w"), "to")).toBe("/x.png");
+    expect(getAttr(byId(doc, "h"), "values")).toBe("/x.png;/y.png");
+    expect(getAttr(byId(doc, "html"), "to")).toBe("/x.png");
+    expect(requested).toEqual([]);
+  });
+});

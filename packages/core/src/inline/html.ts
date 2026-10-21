@@ -2,7 +2,8 @@
 // images and other resource attributes become data: URIs, an image in an <object> or <embed>
 // becomes an <img>, the symbols an SVG <use> takes from an external sprite (and the filters,
 // masks, clip paths, markers and paint servers an SVG attribute's url() names in another file) are
-// copied into the document, a resource that cannot be had is set aside (UNFETCHED_ATTRIBUTE_PREFIX) so the
+// copied into the document, so are the values an SVG <set> or <animate> writes into one of those
+// URL attributes, a resource that cannot be had is set aside (UNFETCHED_ATTRIBUTE_PREFIX) so the
 // archive never asks the network for it, and links are made absolute so they still lead to the
 // live web from the archive.
 import { utf8 } from "../bytes.ts";
@@ -28,7 +29,7 @@ import {
 } from "../dom.ts";
 import { sanitizeDocument } from "../sanitize.ts";
 import { dataCssText, decodeCss, hasCssRefs, inlineCss, inlineUrls, resolveCssUrl, sheetLabel, UNFETCHED_URL, urlTokens, type CssContext } from "./css.ts";
-import { effectiveMime, normalizeMime, toDataUri } from "./datauri.ts";
+import { effectiveMime, normalizeMime, toDataUri, toListDataUri } from "./datauri.ts";
 
 export interface HtmlContext extends CssContext {
   /** What relative URLs in the document resolve against (the snapshot's document.baseURI). */
@@ -368,6 +369,22 @@ function copyFromSprite(sprite: Sprite & { byId: Map<string, Element> }, id: str
           });
         }
       }
+      // an animation of an href writes "#id"s of the file into it: renamed, and copied, as an href's are
+      if (animatedKind(e)?.kind === "href") {
+        for (const a of e.attrs) {
+          if (!(ANIMATION_VALUE_ATTRIBUTES as readonly string[]).includes(a.name)) continue;
+          a.value = a.value
+            .split(";")
+            .map((item) => {
+              const v = item.trim();
+              if (v.length < 2 || !v.startsWith("#")) return item;
+              const ref = fragmentId(v.slice(1));
+              queue.push(ref);
+              return `#${spriteId(sprite.n, ref)}`;
+            })
+            .join(";");
+        }
+      }
       if (e.tagName === "style") {
         setStyleText(
           e,
@@ -418,27 +435,39 @@ async function inlineUse(el: Element, ctx: HtmlContext, state: SpriteState): Pro
   if (raw === null || raw.trim().startsWith("#")) return;
   const url = fetchable(raw, ctx.baseUrl);
   if (!url) return;
+  const copy = await spriteCopy(url, el, ctx, state, false);
+  if ("why" in copy) {
+    if (copy.why) ctx.warn(`use ${url}: ${copy.why}; set aside`);
+    return setUnfetchedAside(el, "href", url);
+  }
+  for (const a of el.attrs) if (a.name === "href") a.value = `#${copy.id}`;
+}
+
+/**
+ * The in-document id that element `url` of another file (an SVG sprite) is to be named by: the
+ * element, and what it refers to, copied into el's tree, or why it cannot be had (null: the
+ * resolver has warned). With `page`, a URL naming the document itself names its own element.
+ */
+async function spriteCopy(url: string, el: Element, ctx: HtmlContext, state: SpriteState, page: boolean): Promise<{ id: string } | { why: string | null }> {
   const parts = new URL(url);
   const id = fragmentId(parts.hash.slice(1));
   parts.hash = "";
   const sheetUrl = parts.href;
-  const setAside = (why: string | null) => {
-    if (why) ctx.warn(`use ${url}: ${why}; set aside`);
-    setUnfetchedAside(el, "href", url);
-  };
-  if (!id) return setAside("names no element of the file");
+  if (!id) return { why: "names no element of the file" };
+  // the document's, not ctx.baseUrl: inside a copy that is the file it came from, whose ids are renamed
+  if (page && sheetUrl === state.page) return { id };
   const sprite = await loadSprite(sheetUrl, ctx, state);
-  if (!sprite) return setAside(null); // the resolver has warned
-  if (!sprite.byId) return setAside(`${sprite.mime} is not an SVG file`);
-  if (!sprite.byId.has(id)) return setAside(`the file has no element with id "${id}"`);
+  if (!sprite) return { why: null }; // the resolver has warned
+  if (!sprite.byId) return { why: `${sprite.mime} is not an SVG file` };
+  if (!sprite.byId.has(id)) return { why: `the file has no element with id "${id}"` };
   const copies = copyFromSprite({ ...sprite, byId: sprite.byId }, id, spriteScope(treeOf(el), state));
-  for (const a of el.attrs) if (a.name === "href") a.value = `#${spriteId(sprite.n, id)}`;
-  // what the copies refer to (an <image>, a nested sprite) is relative to the sprite's own URL
+  // what the copies refer to (an <image>, a nested sprite) is relative to the file's own URL
   await inlineElements(
     copies.flatMap((c) => [c, ...allElements(c)]),
     { ...ctx, baseUrl: sheetUrl },
     state,
   );
+  return { id: spriteId(sprite.n, id) };
 }
 
 /** SVG presentation attributes whose url() names an element: a filter, mask, clip path, marker or paint server. */
@@ -458,6 +487,13 @@ function localRef(id: string): string {
  * reference renders (a fill or stroke's fallback colour, else none).
  */
 async function inlineSvgRef(el: Element, name: string, value: string, ctx: HtmlContext, state: SpriteState): Promise<void> {
+  const { out, aside } = await svgRefValue(el, name, value, ctx, state);
+  if (aside.length) setAttr(el, UNFETCHED_ATTRIBUTE_PREFIX + name, aside.join(" "));
+  setAttr(el, name, out);
+}
+
+/** inlineSvgRef's work on one value: what it becomes, and the URLs set aside from it. */
+async function svgRefValue(el: Element, name: string, value: string, ctx: HtmlContext, state: SpriteState): Promise<{ out: string; aside: string[] }> {
   const aside: string[] = [];
   const refs = urlTokens(value);
   const replacements = await Promise.all(
@@ -465,30 +501,11 @@ async function inlineSvgRef(el: Element, name: string, value: string, ctx: HtmlC
       const written = value.slice(r.index, r.index + r.length);
       const url = resolveCssUrl(r.raw, ctx.baseUrl);
       if (!url) return written; // an in-page #id, a data: URL
-      const parts = new URL(url);
-      const id = fragmentId(parts.hash.slice(1));
-      parts.hash = "";
-      const sheetUrl = parts.href;
-      const setAside = (why: string | null) => {
-        if (why) ctx.warn(`${name} ${url}: ${why}; set aside`);
-        aside.push(url);
-        return null;
-      };
-      if (!id) return setAside("names no element of the file");
-      // the document's, not ctx.baseUrl: inside a copy that is the file it came from, whose ids are renamed
-      if (sheetUrl === state.page) return localRef(id);
-      const sprite = await loadSprite(sheetUrl, ctx, state);
-      if (!sprite) return setAside(null); // the resolver has warned
-      if (!sprite.byId) return setAside(`${sprite.mime} is not an SVG file`);
-      if (!sprite.byId.has(id)) return setAside(`the file has no element with id "${id}"`);
-      const copies = copyFromSprite({ ...sprite, byId: sprite.byId }, id, spriteScope(treeOf(el), state));
-      // what the copies refer to is relative to the file's own URL
-      await inlineElements(
-        copies.flatMap((c) => [c, ...allElements(c)]),
-        { ...ctx, baseUrl: sheetUrl },
-        state,
-      );
-      return localRef(spriteId(sprite.n, id));
+      const copy = await spriteCopy(url, el, ctx, state, true);
+      if ("id" in copy) return localRef(copy.id);
+      if (copy.why) ctx.warn(`${name} ${url}: ${copy.why}; set aside`);
+      aside.push(url);
+      return null;
     }),
   );
   let out = "";
@@ -498,12 +515,9 @@ async function inlineSvgRef(el: Element, name: string, value: string, ctx: HtmlC
     last = r.index + r.length;
   });
   out += value.slice(last);
-  if (aside.length) {
-    setAttr(el, UNFETCHED_ATTRIBUTE_PREFIX + name, aside.join(" "));
-    // a failed reference: a paint falls back to its colour, and a filter, mask, clip path or marker is none
-    out = (name === "fill" || name === "stroke") && out.trim() ? out.trim() : "none";
-  }
-  setAttr(el, name, out);
+  // a failed reference: a paint falls back to its colour, and a filter, mask, clip path or marker is none
+  if (aside.length) out = (name === "fill" || name === "stroke") && out.trim() ? out.trim() : "none";
+  return { out, aside };
 }
 
 /** SVG presentation attributes whose url() names an image, not an element: `cursor="url(cur.png) 4 4, auto"`. */
@@ -526,6 +540,130 @@ async function inlineSvgImageAttr(el: Element, name: string, value: string, ctx:
     aside.sort((a, b) => a.index - b.index);
     setAttr(el, UNFETCHED_ATTRIBUTE_PREFIX + name, aside.map((a) => a.url).join(" "));
   }
+}
+
+/** SVG animation elements that write a value of their own into their target's attribute. */
+export const ANIMATION_ELEMENTS = ["set", "animate"] as const;
+
+/** An animation's attributes holding the values it writes (`values` a ;-separated list of them). */
+export const ANIMATION_VALUE_ATTRIBUTES = ["to", "from", "values", "by"] as const;
+
+/** What an animated href becomes when its resource cannot be had: a URL that fails, as the fetch did, without the network. */
+export const UNFETCHED_HREF = "data:,";
+
+/**
+ * The URL attribute an SVG animation element writes into (its attributeName), and of which kind:
+ * an href (`href`, `xlink:href`), an SVG_REF_ATTRIBUTES url() naming an element, or an
+ * SVG_IMAGE_ATTRIBUTES url() naming an image; null for any other element or attribute.
+ */
+function animatedKind(el: Element): { name: string; kind: "href" | "ref" | "image" } | null {
+  if (el.namespaceURI !== SVG_NAMESPACE || !(ANIMATION_ELEMENTS as readonly string[]).includes(el.tagName)) return null;
+  const name = (el.attrs.find((a) => a.name.toLowerCase() === "attributename")?.value ?? "").trim();
+  if (/^(?:[^:\s]+:)?href$/i.test(name)) return { name, kind: "href" };
+  const css = name.toLowerCase();
+  if ((SVG_REF_ATTRIBUTES as readonly string[]).includes(css)) return { name: css, kind: "ref" };
+  if ((SVG_IMAGE_ATTRIBUTES as readonly string[]).includes(css)) return { name: css, kind: "image" };
+  return null;
+}
+
+/** The element an animation animates: the one its href names (`#id`, in its own tree), else its parent. */
+function animationTarget(el: Element): Element | null {
+  const href = svgHref(el);
+  if (href === null) {
+    const parent = el.parentNode;
+    return parent && isElement(parent) ? parent : null;
+  }
+  const v = href.trim();
+  if (!v.startsWith("#")) return null;
+  const id = fragmentId(v.slice(1));
+  return allElements(treeOf(el)).find((e) => getAttr(e, "id") === id) ?? null;
+}
+
+/**
+ * One value an animation writes into a URL attribute, made what that attribute itself is made:
+ * an <image> or <feImage> href's image a data: URI, a <use> href's element copied in (the sprite
+ * copy's #id), an <a> href absolute, a url() inlined as the attribute's is. One that cannot be had
+ * is set aside: its URL pushed onto `aside`, the value one that fails offline (UNFETCHED_HREF,
+ * UNFETCHED_URL, or the failed reference's fallback). `list`: the value is one of a `values` list,
+ * split at every ";", so a data: URI in it is toListDataUri's.
+ */
+async function animatedValue(
+  el: Element,
+  target: Element | null,
+  attr: { name: string; kind: "href" | "ref" | "image" },
+  item: string,
+  list: boolean,
+  ctx: HtmlContext,
+  state: SpriteState,
+  aside: string[],
+): Promise<string> {
+  const dataUri = list ? toListDataUri : toDataUri;
+  if (attr.kind === "ref") {
+    if (!hasCssRefs(item)) return item;
+    const r = await svgRefValue(el, attr.name, item, ctx, state);
+    aside.push(...r.aside);
+    return r.out;
+  }
+  if (attr.kind === "image") {
+    const found: Array<{ index: number; url: string }> = [];
+    const out = await inlineUrls(
+      item,
+      ctx.baseUrl,
+      ctx,
+      (url, index) => {
+        found.push({ index, url });
+        return UNFETCHED_URL;
+      },
+      dataUri,
+    );
+    aside.push(...found.sort((a, b) => a.index - b.index).map((f) => f.url));
+    return out;
+  }
+  // a fragment-only href names an element of the page itself
+  if (item.trim().startsWith("#")) return item;
+  const url = fetchable(item, ctx.baseUrl);
+  if (!url) return item; // a data: URL
+  const tag = target?.tagName;
+  if (tag === "a") return absoluteLink(item, ctx.baseUrl);
+  const setAside = (why: string | null) => {
+    if (why) ctx.warn(`${el.tagName} ${attr.name} ${url}: ${why}; set aside`);
+    aside.push(url);
+    return UNFETCHED_HREF;
+  };
+  if (tag === "image" || tag === "feImage") {
+    const res = await ctx.get(url);
+    return res ? dataUri(res.bytes, res.mime) : setAside(null); // the resolver has warned
+  }
+  if (tag === "use") {
+    const copy = await spriteCopy(url, el, ctx, state, false);
+    return "id" in copy ? `#${copy.id}` : setAside(copy.why);
+  }
+  return setAside(target ? `a <${target.tagName}> href is not archived` : "animates no element of the page");
+}
+
+/**
+ * An SVG <set> or <animate> whose attributeName is a URL attribute: it runs again when the archive
+ * opens, so each value it writes (to, from, by, every one of values) is inlined as that attribute
+ * itself is, or set aside, its URLs kept in the value attribute's UNFETCHED_ATTRIBUTE_PREFIX one.
+ */
+async function inlineAnimation(el: Element, ctx: HtmlContext, state: SpriteState): Promise<void> {
+  const attr = animatedKind(el);
+  if (!attr) return;
+  const target = attr.kind === "href" ? animationTarget(el) : null;
+  await Promise.all(
+    ANIMATION_VALUE_ATTRIBUTES.map(async (name) => {
+      const v = getAttr(el, name);
+      if (v === null) return;
+      // Chromium splits values at every ";", as here
+      const list = name === "values";
+      const items = list ? v.split(";") : [v];
+      const asides = items.map((): string[] => []);
+      const out = await Promise.all(items.map((item, i) => animatedValue(el, target, attr, item, list, ctx, state, asides[i]!)));
+      setAttr(el, name, out.join(";"));
+      const aside = asides.flat();
+      if (aside.length) setAttr(el, UNFETCHED_ATTRIBUTE_PREFIX + name, aside.join(" "));
+    }),
+  );
 }
 
 /** Inlines every resource doc references and makes its links absolute, in place. */
@@ -563,6 +701,7 @@ async function inlineElements(elements: readonly Element[], ctx: HtmlContext, sp
         const v = getAttr(el, name);
         if (v !== null && hasCssRefs(v)) jobs.push(inlineSvgImageAttr(el, name, v, ctx));
       }
+      if (animatedKind(el)) jobs.push(inlineAnimation(el, ctx, sprites));
     }
     switch (tag) {
       case "link": {

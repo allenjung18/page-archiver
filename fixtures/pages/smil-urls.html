@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SVG animations that set a URL attribute</title>
+<!-- An SVG <set> or <animate> whose attributeName is a URL attribute (an <image>, <feImage> or
+     <use> href; a filter, mask, clip path, marker, paint or cursor url()) runs again when the
+     archive opens and loads its to=, from=, values= and by= URLs. Each must be inlined, or copied
+     in, or set aside: opened from disk with no CSP, the archive must make no request. -->
+<style>
+  body { font-family: Georgia, serif; margin: 24px; color: #1d1b16; background: #faf7f0; }
+  .shapes svg { display: block; width: 640px; height: 200px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <article>
+    <h1>Animated URL attributes</h1>
+    <p class="byline">By A. Fixture &middot; 20 October 2026</p>
+    <div class="shapes">
+      <svg viewBox="0 0 640 200" xmlns:xlink="http://www.w3.org/1999/xlink">
+        <defs>
+          <filter id="picture" x="0" y="0" width="1" height="1">
+            <feImage href="{{ASSETS}}/img/lazy-5.png" preserveAspectRatio="none"><set attributeName="href" to="{{ASSETS}}/img/lazy-6.png"/></feImage>
+          </filter>
+        </defs>
+        <image x="0" y="0" width="120" height="68" href="{{ASSETS}}/img/lazy-1.png"><set attributeName="href" to="{{ASSETS}}/img/lazy-2.png"/></image>
+        <image x="140" y="0" width="120" height="68" href="{{ASSETS}}/img/lazy-3.png"><animate attributeName="href" values="{{ASSETS}}/img/lazy-4.png;{{ASSETS}}/img/lazy-7.png" dur="0.1s" fill="freeze"/></image>
+        <image x="280" y="0" width="120" height="68" xlink:href="{{ASSETS}}/img/lazy-8.png"><set attributeName="xlink:href" to="/sprites/gone.png"/></image>
+        <use x="420" y="0" width="68" height="68" href="/sprites/icons.svg#ring"><set attributeName="href" to="/sprites/icons.svg#star"/></use>
+        <rect x="0" y="100" width="120" height="68" filter="url(#picture)"/>
+        <rect x="160" y="110" width="100" height="48" fill="#36c"><set attributeName="filter" to="url(/sprites/fx.svg#soft)"/></rect>
+        <rect x="300" y="110" width="100" height="48" fill="#c63"><set attributeName="cursor" to="url({{ASSETS}}/img/figure.png) 2 2, pointer"/></rect>
+      </svg>
+    </div>
+  </article>
+</main>
+</body>
+</html>
