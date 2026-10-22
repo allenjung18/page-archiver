@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ARCHIVE_FILE, importHtml, META_FILE, type CaptureOptions, type PageMeta } from "@page-archiver/core";
 import Database from "better-sqlite3";
-import { DB_FILE } from "./layout.ts";
+import { indexEntry } from "./db.ts";
+import { DB_FILE, readCaptureFolder } from "./layout.ts";
 import { AlreadySavedError, openLibrary, type Library } from "./library.ts";
 import { QueryError, toFtsQuery } from "./search.ts";
 
@@ -324,12 +325,16 @@ describe("another process holding the write lock", () => {
     }
   }, 30_000);
 
-  it("makes a save wait out a write lock another process holds, not fail at once", async () => {
+  it("makes an index write wait out a write lock another process holds, not fail at once", async () => {
     // The index write is BEGIN IMMEDIATE. A deferred one reads (SELECT rowid) before it writes,
-    // and SQLite refuses the upgrade at once, without the busy timeout, while another process holds
-    // the write lock: concurrent `pa save`s failed with "database is locked" that way.
+    // and SQLite refuses that upgrade at once, without the busy timeout, while another process
+    // holds the write lock. The capture is read before the lock is taken, so the timer below runs
+    // only while the write waits.
+    const page = lib.list()[0]!;
+    const entry = readCaptureFolder(lib.root, page.dir);
     const driver = createRequire(import.meta.url).resolve("better-sqlite3");
-    const holder = spawn(process.execPath, ["-e", `const D = require(${JSON.stringify(driver)}); const db = new D(process.argv[1]); db.exec("BEGIN IMMEDIATE"); console.log("held"); setTimeout(() => { db.exec("COMMIT"); db.close(); }, 400);`, join(lib.root, DB_FILE)], { stdio: ["ignore", "pipe", "inherit"] });
+    const hold = `const D = require(${JSON.stringify(driver)}); const db = new D(process.argv[1]); db.exec("BEGIN IMMEDIATE"); console.log("held"); setTimeout(() => { db.exec("COMMIT"); db.close(); }, 500);`;
+    const holder = spawn(process.execPath, ["-e", hold, join(lib.root, DB_FILE)], { stdio: ["ignore", "pipe", "inherit"] });
     const exited = new Promise((done) => holder.on("exit", done));
     await new Promise<void>((held, failed) => {
       holder.stdout.on("data", (chunk: Buffer) => chunk.toString().includes("held") && held());
@@ -337,14 +342,13 @@ describe("another process holding the write lock", () => {
     });
     try {
       const started = Date.now();
-      const html = save({ url: "https://x.example/queued", title: "Queued", body: "A tarnwhistle waits its turn.", savedAt: "2026-08-03T00:00:00Z" });
-      await expect(lib.importHtml(html), "a save while another process writes").resolves.toMatchObject({ page: { title: "Queued" } });
-      expect(Date.now() - started, "waited for the other process's commit").toBeGreaterThanOrEqual(200);
+      expect(() => indexEntry(lib.db, entry), "an index write while another process writes").not.toThrow();
+      expect(Date.now() - started, "waited for the other process's commit").toBeGreaterThanOrEqual(250);
     } finally {
       holder.kill();
       await exited;
     }
-    expect(lib.search("tarnwhistle")).toHaveLength(1);
+    expect(lib.get(page.id).title).toBe(page.title);
   }, 30_000);
 
   it("makes a save that cannot be indexed say where it was saved and how to index it", async () => {
