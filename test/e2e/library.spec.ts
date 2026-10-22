@@ -162,13 +162,11 @@ test("re-saving a URL adds version 2 and keeps version 1", async () => {
 });
 
 test("four `pa save` of one URL at once give versions 1 to 4, each saved once", async () => {
-  // FOUND by this test, red against unmodified code: a save can fail with `saved to <dir>, but not
-  // indexed (database is locked)` after ~50 ms, not after busy_timeout (10 s). Reproduced here with
-  // 2 to 8 processes on a warm library. UNVERIFIED THEORY (2026-10-21, falsify: set journal_mode =
-  // WAL in openIndex and rerun this test 20 times): in the default rollback-journal mode a
-  // process holding RESERVED that needs EXCLUSIVE gets SQLITE_BUSY at once, without waiting, when
-  // another process holds SHARED while it waits for RESERVED (SQLite's deadlock rule).
-  test.fixme(true, "pa save races on library.db: SQLITE_BUSY at once under concurrent saves; unskip when the index tolerates it");
+  // Each save's index write waits for the others' (BEGIN IMMEDIATE, then the busy timeout). With
+  // a deferred transaction there, a save that has read fails at once with `saved to <dir>, but not
+  // indexed (database is locked)`: SQLite will not wait to upgrade a read to a write while another
+  // process holds the write lock. That failure shows here in about one run in five; the library's
+  // unit test "makes a save wait out a write lock" shows it every time.
   test.setTimeout(120_000);
   const lib = test.info().outputPath("library");
   const url = fixtureUrl("plain-article");
