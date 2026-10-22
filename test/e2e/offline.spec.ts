@@ -425,7 +425,14 @@ for (const [fixture, spec] of Object.entries(FIXTURES)) {
     expect(verifyStamp(html), "the sha256 stamp matches the file").toBe(true);
     // the summarized warnings are in the file and in the metadata
     if (spec.summary) expect(archive.meta.warnings).toEqual(spec.summary);
-    else expect(archive.meta.warnings, "no summary row: the metadata carries the capture warnings word for word").toEqual(archive.warnings);
+    else {
+      // no summary row: every warning is carried word for word, except that one resource that could
+      // not be had is counted ("1 resource ..."); a row with two would have a summary row
+      const unloaded = /: (fetch failed|not recorded|HTTP \d+|body unavailable)/;
+      expect(archive.meta.warnings, "the metadata carries the capture warnings word for word").toEqual(
+        archive.warnings.map((w) => (unloaded.test(w) ? "1 resource could not be loaded, set aside" : w)),
+      );
+    }
     expect(archive.meta.bytes.archive).toBe(Buffer.byteLength(html));
     const stamped = readStamp(html)["warnings"];
     expect(stamped === undefined ? [] : JSON.parse(stamped)).toEqual(archive.meta.warnings);
