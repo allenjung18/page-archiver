@@ -403,7 +403,9 @@ describe("inlineDocument: SVG <use> of an external sprite", () => {
     );
     expect(warnings).toEqual([]);
     expect(out).not.toContain("cdn.test");
-    for (const a of byId(doc, "u").attrs.filter((x) => x.name === "href")) expect(a.value).toBe(`#${SPRITE_ID_PREFIX}0-dot`);
+    const hrefs = byId(doc, "u").attrs.filter((x) => x.name === "href");
+    // the xlink:href parses to a second "href" attribute; both name the copy
+    expect(hrefs.map((a) => a.value)).toEqual([`#${SPRITE_ID_PREFIX}0-dot`, `#${SPRITE_ID_PREFIX}0-dot`]);
   });
 
   it("copies into the shadow root the <use> is in, where its ids are scoped", async () => {

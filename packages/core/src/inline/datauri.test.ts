@@ -43,6 +43,11 @@ describe("datauri", () => {
     expect(sniffMime(Buffer.from("RIFF\0\0\0\0WEBPVP8 "))).toBe("image/webp");
     expect(sniffMime(Buffer.from("wOF2xxxx"))).toBe("font/woff2");
     expect(sniffMime(Buffer.from("wOFFxxxx"))).toBe("font/woff");
+    expect(sniffMime(Uint8Array.from([0, 0, 1, 0, 1, 0]))).toBe("image/x-icon");
+    expect(sniffMime(Uint8Array.from([0, 1, 0, 0, 0, 9]))).toBe("font/ttf");
+    expect(sniffMime(Buffer.from("OTTOxxxx"))).toBe("font/ttf");
+    expect(sniffMime(Buffer.from("\0\0\0\x1cftypavifxx", "latin1"))).toBe("image/avif");
+    expect(sniffMime(Buffer.from("\0\0\0\x1cftypmp42xx", "latin1"))).toBeNull();
     expect(sniffMime(Buffer.from("plain"))).toBeNull();
   });
 

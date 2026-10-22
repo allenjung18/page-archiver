@@ -52,6 +52,28 @@ describe("snapshotFrames", () => {
     expect(warnings).toEqual([]);
   });
 
+  it("writes the id into the page's element, under the attribute name, before the parent's snapshot reads it", async () => {
+    const events: string[] = [];
+    const child: Fake = {
+      name: "kid",
+      marks: [],
+      url: () => "http://f.test/kid",
+      childFrames: () => [],
+      frameElement: async () => ({
+        evaluate: async (fn: (e: unknown, a: [string, string]) => void, arg: [string, string]) => {
+          fn({ setAttribute: (n: string, v: string) => events.push(`set ${n}=${v}`) }, arg);
+        },
+        dispose: async () => undefined,
+      }),
+    } as unknown as Fake;
+    const top = frame("top", [child]);
+    await snapshotFrames(top, async (f) => {
+      events.push(`snap ${f.name}`);
+      return snap(f);
+    }, { warn: () => undefined });
+    expect(events).toEqual([`set ${FRAME_ATTRIBUTE}=f1`, "snap top", "snap kid"]);
+  });
+
   it("leaves frames past the depth cap empty, with a warning", async () => {
     // top > d1 > d2 > d3: with a cap of 2, d3 is not captured
     const d3 = frame("d3");

@@ -68,6 +68,17 @@ describe("trackNetwork", () => {
     expect(done).toBe(false);
   });
 
+  it("a finish it never saw start does not restart the quiet period", async () => {
+    const { em, net } = setup();
+    let done: boolean | undefined;
+    void net.waitForIdle(500, 15_000).then((v) => (done = v));
+    await vi.advanceTimersByTimeAsync(300);
+    em.emit("requestfinished", {});
+    em.emit("requestfailed", {});
+    await vi.advanceTimersByTimeAsync(201);
+    expect(done, "idle 500 ms after the start, not 500 ms after the stray finish").toBe(true);
+  });
+
   it("ignores a finish it never saw start, and stops counting after dispose", () => {
     const { em, net } = setup();
     em.emit("requestfinished", {});

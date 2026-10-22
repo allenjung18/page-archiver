@@ -1,5 +1,12 @@
 import { Ajv2020 } from "ajv/dist/2020.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const fed = vi.hoisted(() => ({ queue: [] as Uint8Array[] }));
+vi.mock("node:crypto", async (orig) => {
+  const real = await orig<typeof import("node:crypto")>();
+  return { ...real, randomBytes: (n: number) => fed.queue.shift() ?? real.randomBytes(n) };
+});
+
 import { META_SCHEMA, newPageId, normalizeTags, serializeMeta, type PageMeta } from "./meta.ts";
 
 const validate = new Ajv2020({ strict: true, allErrors: true }).compile(META_SCHEMA);
@@ -58,6 +65,16 @@ describe("newPageId", () => {
     const ids = new Set(Array.from({ length: 500 }, newPageId));
     expect(ids.size).toBe(500);
     for (const id of ids) expect(id).toMatch(/^[0-9a-z]{12}$/);
+  });
+
+  it("drops the bytes at or above 252, so no character is likelier than another", () => {
+    // 252..255 would map to 0..3 a second time (252 % 36 = 0): they must be skipped, not used
+    fed.queue.push(Uint8Array.from([252, 253, 254, 255, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]));
+    expect(newPageId()).toBe("0123456789ab");
+    // a draw that is mostly dropped asks for more bytes
+    fed.queue.push(Uint8Array.from([255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 35]));
+    fed.queue.push(Uint8Array.from([71, 36, 251, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+    expect(newPageId()).toBe("zz0z00000000");
   });
 });
 
