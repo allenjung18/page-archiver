@@ -425,7 +425,7 @@ for (const [fixture, spec] of Object.entries(FIXTURES)) {
     expect(verifyStamp(html), "the sha256 stamp matches the file").toBe(true);
     // the summarized warnings are in the file and in the metadata
     if (spec.summary) expect(archive.meta.warnings).toEqual(spec.summary);
-    else expect(archive.meta.warnings).toHaveLength(expected.length);
+    else expect(archive.meta.warnings, "no summary row: the metadata carries the capture warnings word for word").toEqual(archive.warnings);
     expect(archive.meta.bytes.archive).toBe(Buffer.byteLength(html));
     const stamped = readStamp(html)["warnings"];
     expect(stamped === undefined ? [] : JSON.parse(stamped)).toEqual(archive.meta.warnings);

@@ -6,11 +6,13 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { inflateSync } from "node:zlib";
 import { expect, test, type Browser } from "@playwright/test";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { PNG } from "pngjs";
 import { META_SCHEMA, parseMhtml, readStamp, verifyStamp, type PageMeta } from "@page-archiver/core";
 import { ASSETS_ORIGIN, fixtureUrl, VIEWPORT } from "./env.ts";
+import { printPdf, screenshotPng } from "../../packages/core/src/extras/shot.ts";
 import { openOffline } from "./offline.ts";
 
 const run = promisify(execFile);
@@ -165,10 +167,17 @@ for (const [name, expected] of Object.entries(ARTICLES)) {
       expect(opened.scripts).toBe(0);
     });
 
-    await test.step("the PNG is the full page and the PDF is a PDF", () => {
+    await test.step("the PNG is the full page and the PDF is a PDF", async () => {
       const png = PNG.sync.read(readFileSync(file("shot.png")));
       expect(png.width).toBe(VIEWPORT.width);
-      expect(png.height).toBeGreaterThanOrEqual(VIEWPORT.height);
+      // the whole page, not the first screen: as tall as the page itself, measured on a live load
+      const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+      const live = await context.newPage();
+      await live.goto(url, { waitUntil: "load" });
+      const pageHeight = await live.evaluate(() => document.documentElement.scrollHeight);
+      await context.close();
+      expect(pageHeight, "the fixture is taller than one screen, so the check can tell").toBeGreaterThan(VIEWPORT.height);
+      expect(png.height, "full-page PNG as tall as the page").toBe(pageHeight);
       const pdf = readFileSync(file("shot.pdf"));
       expect(pdf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
       expect(pdf.subarray(-1024).toString("latin1")).toContain("%%EOF");
@@ -176,6 +185,24 @@ for (const [name, expected] of Object.entries(ARTICLES)) {
     });
   });
 }
+
+test("the PDF keeps the page's own backgrounds, and the PNG is taller than the first screen for a tall page", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+  try {
+    const page = await context.newPage();
+    await page.setContent('<body style="margin:0"><div style="background:#c00;height:2400px"></div></body>');
+    const png = PNG.sync.read(await screenshotPng(page));
+    expect(png.height).toBe(2400);
+    const withBackground = await printPdf(page);
+    const without = await page.pdf({ printBackground: false, preferCSSPageSize: true, format: "A4" });
+    const drawn = (pdf: Buffer) =>
+      [...pdf.toString("latin1").matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)].map((m) => inflateSync(Buffer.from(m[1]!, "latin1")).toString("latin1")).join("\n");
+    expect(drawn(withBackground), "the red block is painted").toContain(".8 0 0 rg");
+    expect(drawn(without), "and is not, without printBackground").not.toContain(".8 0 0 rg");
+  } finally {
+    await context.close();
+  }
+});
 
 test("pa save -d with extras turned off writes only what is left, even over an earlier capture", async () => {
   const dir = test.info().outputPath("capture");
