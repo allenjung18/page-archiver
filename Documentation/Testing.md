@@ -27,7 +27,10 @@ Tests that pin a case a reader could get wrong: a password or file input typed `
 (`library.test.ts`); the reader UI's CSP written out byte for byte and `startServer` on a port in
 use (`api.test.ts`); the extension's `ANSWER_TIMEOUT_MS` abort and `credentials: "omit"`
 (`server.test.ts`); a malformed UTF-8 sequence (`bytes.test.ts`); the singular warning in the popup
-(`popup.test.ts`).
+(`popup.test.ts`); the 12-character page id's rejection of the biased bytes (`meta.test.ts`, the
+random source fed by hand); a finish event the network tracker never saw start (`settle.test.ts`);
+the id a child frame's element is given, and that it is given before the parent is read
+(`frames.test.ts`); the icon, TrueType, OpenType and AVIF signatures (`datauri.test.ts`).
 
 ## The fixture server (`fixtures/server.ts`)
 
@@ -95,17 +98,23 @@ All in Chromium at `VIEWPORT` (1280x900, scale 1), `retries: 0` (`playwright.con
   unloadable page or `pa serve` on a port in use, 0 for `pa help`); `pa serve` and `pa open` with no
   browser opener installed.
 - **`extras.spec.ts`**: `pa save -d <dir>` writes the archive, the reader copy, MHTML, PNG, PDF
-  and a `meta.json` valid against `META_SCHEMA`; the reader and MHTML copies open offline.
+  and a `meta.json` valid against `META_SCHEMA`; the reader and MHTML copies open offline; the PNG
+  is as tall as the live page, and `printPdf` keeps a page's backgrounds (read from the PDF's
+  drawing operators).
 - **`library.spec.ts`**: every capture fixture saved with `pa save` and the SingleFile saves
   brought in with `pa import`, then search, a rebuilt index, versions, tags and `pa open`. Every
   command names its library and `PA_LIBRARY` points there too, so no test reaches
-  `~/Archive/pages`.
+  `~/Archive/pages`. A test of four `pa save` of one URL at once is skipped (`test.fixme`) until
+  the index tolerates it; see Review.md, "Docs and tests".
 - **`reader-ui.spec.ts`**: `pa serve` over a test library (search, filters, Original/Reader,
-  tags, delete, re-capture), the archive route's CSP header byte for byte, and a planted script
+  tags, delete, re-capture, and re-capture of a page that now answers 500 or cannot be reached,
+  against a loopback page the test controls), the archive route's CSP header byte for byte, and a planted script
   that must not run. Always `--no-open` with `PA_NO_OPEN=1`.
 - **`extension.spec.ts`**: the built extension in a throwaway profile (`extension.ts`): the
   popup saves a fixture into a test library through `pa serve`, and with no server the download
-  fallback's `archive.html` passes the offline assertion.
+  fallback's `archive.html` passes the offline assertion; a page whose text only the tab holds
+  (`sessionStorage`) is saved with that text, so the extension's own capture, not the server's
+  fetch, is what is archived.
 
 Run one spec: `npx playwright test test/e2e/offline.spec.ts -g media` after `npm run build`.
 

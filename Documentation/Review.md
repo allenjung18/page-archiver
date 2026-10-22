@@ -130,6 +130,25 @@ this file's Source column. Ten tests were added or strengthened, each shown to f
 mutant of the code it guards: `PASSWORD` in upper case; an ambiguous id prefix (and `remove` by it);
 the UI's CSP byte for byte; `ANSWER_TIMEOUT_MS`; a port in use (its message only: that the library handle is closed cannot be seen from outside, as an idle SQLite handle blocks nothing); the exit codes, an import of one bad file among good ones included; a sheet that imports
 itself (exact output, once); an alternate stylesheet (the whole `<link>` goes); the popup's single
-warning; malformed UTF-8. Not done, in risk order: the extension's own capture proven end to end
-(`api.ts` `html === undefined`), a re-capture of a page that now fails, and two `pa save` of one URL
-at once.
+warning; malformed UTF-8. A second pass added ten more, each shown to fail against a mutant (or, for the skipped one, red
+against the unmodified code): the rejection of random bytes at or above 252 in `newPageId`; a
+finish event the tracker never saw start; the order and the attribute name when a child frame is
+marked; the icon, TrueType, OpenType and AVIF signatures; the PNG as tall as the page and the PDF
+keeping backgrounds; the warnings in a capture's metadata word for word; the sprite's `href`
+rewritten (a loop that can run zero times is now a count); a re-capture of a page that answers 500
+(saved as the next version with `the page answered HTTP 500`, pinned as the current behaviour) and
+of one that cannot be loaded (HTTP 500 with the reason, no version added, the reason shown in the
+UI); and the extension's own capture, proven by text only the tab held. Not changed on purpose:
+the `ONCLICK` sanitize cases are an equivalent mutant (parse5 lower-cases attribute names before
+the sanitizer sees them), and "rebuilt while another handle has it open" needs two processes at a
+precise moment.
+
+One real defect came out of the work on two `pa save` of one URL at once. Four processes saving one
+URL against one library (also two to eight in a script) fail some of the time with `saved to <dir>,
+but not indexed (database is locked)`, after about 50 ms and not after the 10 s `busy_timeout`; the
+capture is on disk and `pa reindex` adds it. The failure is at the `INSERT INTO pages` inside
+`indexEntry`. The likely cause is SQLite's rollback-journal deadlock rule (not reproduced in
+isolation; trying `journal_mode = WAL` is the cheap check). The test is written and skipped with
+`test.fixme`; the fix is a product change to `openIndex`. A smaller note from the same run: of two
+saves of a new URL taken together, neither knows of the other, so the later one's `versionOf` is
+null.
