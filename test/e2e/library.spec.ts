@@ -180,7 +180,7 @@ test("four `pa save` of one URL at once give versions 1 to 4, each saved once", 
   const all = json<PageRecord[]>(await ok(lib, "list", "--json", "--all"));
   expect(all.map((p) => p.version)).toEqual([4, 3, 2, 1]);
   expect(new Set(all.map((p) => p.id)).size).toBe(4);
-  // each run printed its own saved page (the two outputs name the two ids)
+  // each run printed its own saved page (the four outputs name the four ids)
   expect(runs.map((r) => /^saved ([0-9a-z]{12}) /.exec(r.stdout)?.[1]).sort()).toEqual(all.map((p) => p.id).sort());
   // the folders on disk agree: a rebuilt index lists the same pages
   const before = await ok(lib, "list", "--json", "--all");

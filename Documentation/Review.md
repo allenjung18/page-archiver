@@ -134,7 +134,7 @@ warning; malformed UTF-8. A second pass added ten more, each shown to fail again
 against the unmodified code): the rejection of random bytes at or above 252 in `newPageId`; a
 finish event the tracker never saw start; the order and the attribute name when a child frame is
 marked; the icon, TrueType, OpenType and AVIF signatures; the PNG as tall as the page and the PDF
-keeping backgrounds; the warnings in a capture's metadata word for word; the sprite's `href`
+keeping backgrounds; the warnings in a capture's metadata word for word (one unloaded resource is counted as `1 resource could not be loaded, set aside`); the sprite's `href`
 rewritten (a loop that can run zero times is now a count); a re-capture of a page that answers 500
 (saved as the next version with `the page answered HTTP 500`, pinned as the current behaviour) and
 of one that cannot be loaded (HTTP 500 with the reason, no version added, the reason shown in the
