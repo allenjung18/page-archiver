@@ -162,11 +162,12 @@ test("re-saving a URL adds version 2 and keeps version 1", async () => {
 });
 
 test("four `pa save` of one URL at once give versions 1 to 4, each saved once", async () => {
-  // Each save's index write waits for the others' (BEGIN IMMEDIATE, then the busy timeout). With
-  // a deferred transaction there, a save that has read fails at once with `saved to <dir>, but not
-  // indexed (database is locked)`: SQLite will not wait to upgrade a read to a write while another
-  // process holds the write lock. That failure shows here in about one run in five; the library's
-  // unit test "makes a save wait out a write lock" shows it every time.
+  // Each save's index write waits for the others' (BEGIN IMMEDIATE, then the busy timeout). A
+  // deferred write fails here about one run in five with `saved to <dir>, but not indexed
+  // (database is locked)`: SQLite will not wait to turn a read into a write while another process
+  // holds the write lock. One run saw that failure with the write already immediate; its cause is
+  // not known (Review.md, row 55). The library's unit test "makes an index write wait out a write
+  // lock" fails every time against a deferred write.
   test.setTimeout(120_000);
   const lib = test.info().outputPath("library");
   const url = fixtureUrl("plain-article");
