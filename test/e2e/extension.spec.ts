@@ -76,7 +76,8 @@ test("the popup saves a fixture page into the library through the server, with i
   }
 });
 
-test("the popup saves the page as the tab had it, not as the server would fetch it", async (_fixtures, testInfo) => {
+// eslint-disable-next-line no-empty-pattern -- Playwright wants a destructuring pattern to see this test uses no fixture
+test("the popup saves the page as the tab had it, not as the server would fetch it", async ({}, testInfo) => {
   test.setTimeout(120_000);
   // a loopback page that writes its text from this tab's sessionStorage: a fresh load (the
   // server's own fetch, in its own browser) has none, and shows "no note"
