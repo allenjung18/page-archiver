@@ -5,6 +5,7 @@
 // byte; and an archive with a planted script that must not run. `pa serve` is always started
 // with --no-open and PA_NO_OPEN=1, so no test opens a browser of its own.
 import { spawn, execFile, type ChildProcess } from "node:child_process";
+import { createServer, type Server } from "node:http";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,7 +69,7 @@ async function serve(lib: string, pages: PageRecord[]): Promise<Served> {
       reject(new Error(`pa serve exited (${code}):\n${out}\n${err}`));
     });
   });
-  expect(out).toContain(`serving ${lib} (${pages.length} pages)`);
+  expect(out).toContain(`serving ${lib} (${pages.length} ${pages.length === 1 ? "page" : "pages"})`);
   return {
     lib,
     ...started,
@@ -310,4 +311,51 @@ test("re-capture saves the page again as its next version", async ({ page }) => 
   // the list still shows the page once, as its newest version
   await expect(results(page)).toHaveCount(7);
   await expect(results(page).filter({ hasText: p.title })).toHaveAttribute("data-id", versions[0]!.id);
+});
+
+test("re-capture of a page that now answers 500 saves it with the warning; one that cannot be reached answers an error and adds no version", async ({ page, request }) => {
+  test.setTimeout(120_000);
+  // a loopback page whose answer the test controls
+  let status = 200;
+  const origin: Server = createServer((_req, res) => {
+    res.writeHead(status, { "content-type": "text/html" });
+    res.end(`<!doctype html><title>Flaky Harbour Notes</title><article><h1>Flaky Harbour Notes</h1><p>${"The harbour answers when it likes. ".repeat(30)}</p></article>`);
+  });
+  await new Promise<void>((resolve) => origin.listen(0, "127.0.0.1", resolve));
+  const pageUrl = `http://127.0.0.1:${(origin.address() as { port: number }).port}/notes`;
+  try {
+    const lib = test.info().outputPath("library");
+    await pa(lib, "save", pageUrl, "--no-mhtml", "--no-shot");
+    const [v1] = JSON.parse(await pa(lib, "list", "--json")) as PageRecord[];
+    server = await serve(lib, [v1!]);
+    const s = server;
+    const recapture = () => request.post(`${s.url}api/pages/${v1!.id}/recapture`, { headers: { Authorization: `Bearer ${s.token}` }, timeout: 90_000 });
+    const versions = async () => (JSON.parse(await pa(lib, "list", "--json", "--all")) as PageRecord[]).filter((x) => x.url === pageUrl).map((x) => x.version);
+
+    // a 5xx is saved as the next version (pinned: the product keeps what the page said), and the
+    // response says so
+    status = 500;
+    const failing = await recapture();
+    expect(failing.status()).toBe(201);
+    const body = (await failing.json()) as { page: PageRecord; warnings: string[] };
+    expect(body.page).toMatchObject({ url: pageUrl, version: 2 });
+    expect(body.warnings).toContain("the page answered HTTP 500");
+    expect(await versions()).toEqual([2, 1]);
+
+    // a page that cannot be loaded at all: 500 with the reason, nothing added, and the UI says why
+    await new Promise<void>((resolve) => origin.close(() => resolve()));
+    const gone = await recapture();
+    expect(gone.status()).toBe(500);
+    const reason = ((await gone.json()) as { error: string }).error;
+    expect(reason).toMatch(/ERR_CONNECTION_REFUSED/);
+    expect(await versions()).toEqual([2, 1]);
+    await openApp(page, { ...s, pages: [v1!] });
+    await results(page).first().click();
+    await page.getByRole("button", { name: "Re-capture" }).click();
+    await expect(page.getByRole("alert")).toContainText("ERR_CONNECTION_REFUSED", { timeout: 90_000 });
+    expect(await versions()).toEqual([2, 1]);
+  } finally {
+    origin.close();
+    origin.closeAllConnections();
+  }
 });

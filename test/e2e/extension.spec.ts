@@ -3,6 +3,7 @@
 // through the library server, and with no server running the same save downloads archive.html,
 // which must pass the offline assertion and look like the live page.
 import { readFileSync } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { expect, test } from "@playwright/test";
 import { verifyStamp, readStamp } from "@page-archiver/core";
@@ -72,6 +73,47 @@ test("the popup saves a fixture page into the library through the server, with i
   } finally {
     await ext.close();
     await server.close();
+  }
+});
+
+test("the popup saves the page as the tab had it, not as the server would fetch it", async (_fixtures, testInfo) => {
+  test.setTimeout(120_000);
+  // a loopback page that writes its text from this tab's sessionStorage: a fresh load (the
+  // server's own fetch, in its own browser) has none, and shows "no note"
+  const origin = createHttpServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(
+      `<!doctype html><title>Signed-in Notes</title><article><h1>Signed-in Notes</h1><p id="note"></p><p>${"The page keeps its notes in the tab. ".repeat(20)}</p></article>` +
+        `<script>window.show = () => { document.getElementById("note").textContent = sessionStorage.getItem("note") || "no note"; }; window.show();</script>`,
+    );
+  });
+  await new Promise<void>((resolve) => origin.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${(origin.address() as { port: number }).port}/notes`;
+  const server = await startServer({ library: testInfo.outputPath("library"), port: 0 });
+  const ext = await launchWithExtension();
+  try {
+    await ext.setServer(server.url);
+    const page = await ext.context.newPage();
+    await page.goto(url);
+    await page.evaluate(() => {
+      sessionStorage.setItem("note", "the tab-only note quillfeather");
+      (window as unknown as { show(): void }).show();
+    });
+    const tabId = await ext.tabId(page);
+    const popup = await ext.openPopup(tabId);
+    await popup.locator("#save").click();
+    await expect(popup.locator("#status")).toHaveText(/^Saved ✓/, { timeout: 60_000 });
+
+    const [saved] = server.library.list();
+    const html = readFileSync(server.library.pathOf(saved!), "utf8");
+    expect(html, "the text only this tab had").toContain("the tab-only note quillfeather");
+    expect(html).not.toContain("no note");
+    expect(server.library.search("quillfeather").map((h) => h.url)).toEqual([url]);
+  } finally {
+    await ext.close();
+    await server.close();
+    origin.close();
+    origin.closeAllConnections();
   }
 });
 

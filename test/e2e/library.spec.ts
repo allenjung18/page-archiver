@@ -160,3 +160,31 @@ test("re-saving a URL adds version 2 and keeps version 1", async () => {
   expect(await ok(lib, "open", v2!.id, "--reader", "--print")).toBe(`${join(lib, v2!.dir, "reader.html")}\n`);
   expect(await pa(lib, "open", "zzzzzzzz", "--print")).toMatchObject({ code: 2, stderr: "pa: no page with id zzzzzzzz\n" });
 });
+
+test("four `pa save` of one URL at once give versions 1 to 4, each saved once", async () => {
+  // FOUND by this test, red against unmodified code: a save can fail with `saved to <dir>, but not
+  // indexed (database is locked)` after ~50 ms, not after busy_timeout (10 s). Reproduced here with
+  // 2 to 8 processes on a warm library. UNVERIFIED THEORY (2026-10-21, falsify: set journal_mode =
+  // WAL in openIndex and rerun this test 20 times): in the default rollback-journal mode a
+  // process holding RESERVED that needs EXCLUSIVE gets SQLITE_BUSY at once, without waiting, when
+  // another process holds SHARED while it waits for RESERVED (SQLite's deadlock rule).
+  test.fixme(true, "pa save races on library.db: SQLITE_BUSY at once under concurrent saves; unskip when the index tolerates it");
+  test.setTimeout(120_000);
+  const lib = test.info().outputPath("library");
+  const url = fixtureUrl("plain-article");
+  const runs = await Promise.all(Array.from({ length: 4 }, () => pa(lib, "save", url, "--no-mhtml", "--no-shot")));
+  for (const r of runs) {
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stderr, "no database-busy error").toBe("");
+  }
+  const all = json<PageRecord[]>(await ok(lib, "list", "--json", "--all"));
+  expect(all.map((p) => p.version)).toEqual([4, 3, 2, 1]);
+  expect(new Set(all.map((p) => p.id)).size).toBe(4);
+  // each run printed its own saved page (the two outputs name the two ids)
+  expect(runs.map((r) => /^saved ([0-9a-z]{12}) /.exec(r.stdout)?.[1]).sort()).toEqual(all.map((p) => p.id).sort());
+  // the folders on disk agree: a rebuilt index lists the same pages
+  const before = await ok(lib, "list", "--json", "--all");
+  rmSync(join(lib, "library.db"));
+  await ok(lib, "reindex");
+  expect(await ok(lib, "list", "--json", "--all")).toBe(before);
+});
