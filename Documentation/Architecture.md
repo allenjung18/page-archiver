@@ -346,8 +346,13 @@ comment (`readSingleFileHeader`) or, for a file page-archiver made itself, from 
   read-only command never waits for a writer). A rebuild scans the folders before it takes the
   write lock (`BEGIN IMMEDIATE`), so the parse of every capture holds up no other writer, and
   then checks the folders again by a stat each: a row whose folder appeared after the scan is
-  kept, a scanned folder removed since is dropped. A writer waits `BUSY_TIMEOUT_MS` (10 s) for
-  the lock. The indexed text is the reader copy's article, or the archive's visible text when
+  kept, a scanned folder removed since is dropped. Every write (`indexEntry`, `setIndexedTags`,
+  `removeIndexed`, a rebuild) takes the write lock before it reads (`BEGIN IMMEDIATE`) and waits
+  `BUSY_TIMEOUT_MS` (10 s) for it, so `pa save`s run side by side take turns: a transaction that
+  read first would fail at once, as SQLite will not wait to make a read a write while another
+  process holds the write lock. The index uses SQLite's default rollback journal (a
+  `library.db-journal` beside it only while a write is open), not WAL, whose `-wal` and `-shm` files
+  and shared memory a network share or a read-only volume does not give. The indexed text is the reader copy's article, or the archive's visible text when
   there is no reader copy (`readerText`, `archiveText`, `text.ts`; capped at `MAX_TEXT`, 2 MB).
   The two private-use characters the server's snippet marks are made of (U+E000, U+E001) are
   never indexed (`indexEntry`): an icon font draws its glyphs there.

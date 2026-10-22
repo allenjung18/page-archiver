@@ -104,8 +104,8 @@ All in Chromium at `VIEWPORT` (1280x900, scale 1), `retries: 0` (`playwright.con
 - **`library.spec.ts`**: every capture fixture saved with `pa save` and the SingleFile saves
   brought in with `pa import`, then search, a rebuilt index, versions, tags and `pa open`. Every
   command names its library and `PA_LIBRARY` points there too, so no test reaches
-  `~/Archive/pages`. A test of four `pa save` of one URL at once is skipped (`test.fixme`) until
-  the index tolerates it; see Review.md, "Docs and tests".
+  `~/Archive/pages`. Four `pa save` of one URL at once each save one version, 1 to 4 (Review.md,
+  row 55).
 - **`reader-ui.spec.ts`**: `pa serve` over a test library (search, filters, Original/Reader,
   tags, delete, re-capture, and re-capture of a page that now answers 500 or cannot be reached,
   against a loopback page the test controls), the archive route's CSP header byte for byte, and a planted script

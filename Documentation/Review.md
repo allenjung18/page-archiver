@@ -102,6 +102,7 @@ except recipe at 3.75% (read, not asserted: real pages move).
 | 47 | code review | with `--raw`, only SQLite messages matching `fts5`, `syntax` or `no such column` became a `QueryError`, so an unterminated string (`"abc`), `*` or `NEAR(a b, x)` made `pa search --raw` exit 1 with a bare SQLite error instead of exit 2 | any `SQLITE_ERROR` from the `MATCH` statement is a `QueryError` with `--raw` (the query is its only user input); a busy or corrupt database is not | `library.test.ts` › makes every malformed --raw query a query error |
 | 48 | code review | a capture time past the year 9999 (a SingleFile `saved date`, or a stamp's `captured-at`, both read with `new Date`) filed the page under a five-digit year folder, which `listCaptureFolders` never reads: the page was indexed, then gone at the next reindex with no `skipped` line, and `toISOString`'s `+010000-` broke `--since`/`--until` | `captureDate` (`import.ts`) takes a time outside the years 1000 to 9999 as no time, so the import uses the file's own; `captureFolder` and `meta.json`'s check refuse one | `import.test.ts` › takes a date outside the years 1000 to 9999 as no date; › takes a stamped capture time outside the years 1000 to 9999 as no time; `library.test.ts` › keeps a page whose saved date is past the year 9999 |
 | 49 | test review | an `@import` of a sheet postcss cannot parse was removed whole (`inlineCss`, `inline/css.ts`) after the url()s in it had been fetched, while its warning said `url()s inlined, @import set aside` | the sheet is checked before anything it names is fetched, and dropped with its `@import`: the warning says `dropped, with the @import in <sheet>` and a comment records the URL. It is not kept: its text (an unclosed block) would swallow the importing sheet's rules after it | `css.test.ts` › an @import of a sheet that does not parse › drops the sheet and says so |
+| 55 | test review (four `pa save` of one URL at once) | four saves of one URL into one library failed some of the time with `saved to <dir>, but not indexed (database is locked)` after about 50 ms, not after the 10 s busy timeout. That is the failure of a deferred index write: `indexEntry` reads (`SELECT rowid`) before it writes, and SQLite refuses to turn a read into a write at once, without the busy timeout, while another process holds the write lock. Made deferred (`write()` for `write.immediate()`), the e2e test fails about one run in five with that message; as written (`BEGIN IMMEDIATE`) the failure was not seen again in more than 300 saves eight at a time, warm and cold libraries, under CPU load | no code change: `indexEntry`, `setIndexedTags`, `removeIndexed` and the rebuild already take the write lock first (`BEGIN IMMEDIATE`), which waits `BUSY_TIMEOUT_MS`. The index stays in SQLite's default rollback-journal mode, not WAL: WAL was the guess, but the journal mode is not the cause, and WAL leaves `-wal` and `-shm` files beside `library.db` and needs shared memory, so a library on a network share or a read-only volume would open worse than it does | `library.test.ts` › another process holding the write lock › makes a save wait out a write lock another process holds, not fail at once (a second process holds `BEGIN IMMEDIATE` for 400 ms; red every time against a deferred `indexEntry`); `library.spec.ts` › four `pa save` of one URL at once give versions 1 to 4, each saved once, no longer skipped |
 
 ## Consider
 
@@ -130,8 +131,8 @@ this file's Source column. Ten tests were added or strengthened, each shown to f
 mutant of the code it guards: `PASSWORD` in upper case; an ambiguous id prefix (and `remove` by it);
 the UI's CSP byte for byte; `ANSWER_TIMEOUT_MS`; a port in use (its message only: that the library handle is closed cannot be seen from outside, as an idle SQLite handle blocks nothing); the exit codes, an import of one bad file among good ones included; a sheet that imports
 itself (exact output, once); an alternate stylesheet (the whole `<link>` goes); the popup's single
-warning; malformed UTF-8. A second pass added ten more, each shown to fail against a mutant (or, for the skipped one, red
-against the unmodified code): the rejection of random bytes at or above 252 in `newPageId`; a
+warning; malformed UTF-8. A second pass added ten more, each shown to fail against a mutant (the four saves at once, about one
+run in five against a deferred index write; row 55): the rejection of random bytes at or above 252 in `newPageId`; a
 finish event the tracker never saw start; the order and the attribute name when a child frame is
 marked; the icon, TrueType, OpenType and AVIF signatures; the PNG as tall as the page and the PDF
 keeping backgrounds; the warnings in a capture's metadata word for word (one unloaded resource is counted as `1 resource could not be loaded, set aside`); the sprite's `href`
@@ -143,12 +144,9 @@ the `ONCLICK` sanitize cases are an equivalent mutant (parse5 lower-cases attrib
 the sanitizer sees them), and "rebuilt while another handle has it open" needs two processes at a
 precise moment.
 
-One real defect came out of the work on two `pa save` of one URL at once. Four processes saving one
-URL against one library (also two to eight in a script) fail some of the time with `saved to <dir>,
-but not indexed (database is locked)`, after about 50 ms and not after the 10 s `busy_timeout`; the
-capture is on disk and `pa reindex` adds it. The failure is at the `INSERT INTO pages` inside
-`indexEntry`. The likely cause is SQLite's rollback-journal deadlock rule (not reproduced in
-isolation; trying `journal_mode = WAL` is the cheap check). The test is written and skipped with
-`test.fixme`; the fix is a product change to `openIndex`. A smaller note from the same run: of two
-saves of a new URL taken together, neither knows of the other, so the later one's `versionOf` is
-null.
+Four `pa save` of one URL at once, against one library, is tested and passes (row 55). An
+earlier run saw some of them fail with `saved to <dir>, but not indexed (database is locked)`
+after about 50 ms; that is what a deferred index write does (it reads, then SQLite will not wait to
+make the read a write while another process writes), and the write is `BEGIN IMMEDIATE`. A note
+from the same run, not changed: of two saves of a new URL taken together, neither knows of the
+other, so the later one's `versionOf` is null.
